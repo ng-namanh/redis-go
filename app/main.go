@@ -23,20 +23,21 @@ func main() {
 
 	conn, err := l.Accept()
 
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading from connection: ", err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Println("Read ", n, " bytes from connection")
-	fmt.Println("Data: ", string(buf[:n]))
-
-	conn.Write([]byte("+PONG\r\n"))
-
 	if err != nil {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
+
+	for {
+		buf := make([]byte, 1024)
+
+		_, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading from connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		conn.Write([]byte("+PONG\r\n"))
+	}
+
 }
