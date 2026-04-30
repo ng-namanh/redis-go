@@ -28,6 +28,9 @@ func lrangeSlice(l list, start, stop int) list {
 
 	if startIdx < 0 {
 		startIdx += ln
+
+		// if the start index is negative, and the absolute value of the start index is greater than the length of the list, set the start index to 0
+		// Example: start = -12, ln = 10, startIdx = -12 + 10 = -2 -> startIdx = 0
 		if startIdx < 0 {
 			startIdx = 0
 		}
@@ -40,9 +43,11 @@ func lrangeSlice(l list, start, stop int) list {
 			stopIdx = 0
 		}
 	}
+
 	if stopIdx >= ln {
 		stopIdx = ln - 1
 	}
+
 	if startIdx > stopIdx {
 		return nil
 	}
@@ -58,83 +63,105 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 
 	switch cmd {
 	case "PING":
-		return resp.WriteSimpleString("PONG"), nil
+		return PING(), nil
 	case "ECHO":
-		if len(args) < 1 {
-			return nil, fmt.Errorf("wrong number of arguments for 'ECHO'")
-		}
-		return resp.WriteBulkString(args[0]), nil
+		return ECHO(args)
 	case "SET":
-
-		if len(args) < 2 {
-			return nil, fmt.Errorf("wrong number of arguments for 'SET'")
-		}
-
-		key := args[0]
-		value := args[1]
-
-		cache[key] = value
-		if len(args) > 2 && args[2] == "PX" {
-			duration, err := strconv.ParseInt(args[3], 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid argument for 'SET'")
-			}
-			go deleteKeyAfterDuration(key, duration)
-		}
-		return resp.WriteSimpleString("OK"), nil
+		return SET(args)
 	case "GET":
-		if len(args) < 1 {
-			return nil, fmt.Errorf("wrong number of arguments for 'GET'")
-		}
-		key := args[0]
-		raw, ok := cache[key]
-		if !ok {
-			return []byte("$-1" + resp.CRLF), nil
-		}
-		s, ok := raw.(string)
-		if !ok {
-			return nil, fmt.Errorf("GET: stored value for %q is not a string", key)
-		}
-		return resp.WriteBulkString(s), nil
+		return GET(args)
 	case "RPUSH":
-		if len(args) < 2 {
-			return nil, fmt.Errorf("wrong number of arguments for 'RPUSH'")
-		}
-
-		listName := args[0]
-
-		if _, ok := lists[listName]; !ok {
-			lists[listName] = make(list, 0)
-		}
-
-		lists[listName] = append(lists[listName], args[1:]...)
-
-		return resp.WriteInteger(int64(len(lists[listName]))), nil
+		return RPUSH(args)
 	case "LRANGE":
-		if len(args) < 3 {
-			return nil, fmt.Errorf("wrong number of arguments for 'LRANGE'")
-		}
-
-		listName := args[0]
-		start, err := strconv.Atoi(args[1])
-		if err != nil {
-			return nil, fmt.Errorf("invalid argument for 'LRANGE'")
-		}
-		end, err := strconv.Atoi(args[2])
-		if err != nil {
-			return nil, fmt.Errorf("invalid argument for 'LRANGE'")
-		}
-
-		sub := lrangeSlice(lists[listName], start, end)
-		elements := make([]resp.RESP, 0, len(sub))
-		for _, s := range sub {
-			elements = append(elements, resp.RESP{Type: resp.BulkString, Str: s})
-		}
-		return resp.WriteArray(elements), nil
-
+		return LRANGE(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
+}
+
+func PING() []byte {
+	return resp.WriteSimpleString("PONG")
+}
+
+func ECHO(args []string) ([]byte, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("wrong number of arguments for 'ECHO'")
+	}
+	return resp.WriteBulkString(args[0]), nil
+}
+
+func SET(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("wrong number of arguments for 'SET'")
+	}
+
+	key := args[0]
+	value := args[1]
+
+	cache[key] = value
+	if len(args) > 2 && args[2] == "PX" {
+		duration, err := strconv.ParseInt(args[3], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid argument for 'SET'")
+		}
+		go deleteKeyAfterDuration(key, duration)
+	}
+	return resp.WriteSimpleString("OK"), nil
+}
+
+func GET(args []string) ([]byte, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("wrong number of arguments for 'GET'")
+	}
+	key := args[0]
+	raw, ok := cache[key]
+	if !ok {
+		return []byte("$-1" + resp.CRLF), nil
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return nil, fmt.Errorf("GET: stored value for %q is not a string", key)
+	}
+	return resp.WriteBulkString(s), nil
+}
+
+func RPUSH(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("wrong number of arguments for 'RPUSH'")
+	}
+
+	listName := args[0]
+
+	if _, ok := lists[listName]; !ok {
+		lists[listName] = make(list, 0)
+	}
+
+	lists[listName] = append(lists[listName], args[1:]...)
+
+	return resp.WriteInteger(int64(len(lists[listName]))), nil
+}
+
+func LRANGE(args []string) ([]byte, error) {
+	if len(args) < 3 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LRANGE'")
+	}
+
+	listName := args[0]
+	start, err := strconv.Atoi(args[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid argument for 'LRANGE'")
+	}
+	end, err := strconv.Atoi(args[2])
+	if err != nil {
+		return nil, fmt.Errorf("invalid argument for 'LRANGE'")
+	}
+
+	sub := lrangeSlice(lists[listName], start, end)
+	elements := make([]resp.RESP, 0, len(sub))
+	for _, s := range sub {
+		elements = append(elements, resp.RESP{Type: resp.BulkString, Str: s})
+	}
+	return resp.WriteArray(elements), nil
 }
 
 func deleteKeyAfterDuration(key string, duration int64) {
