@@ -58,6 +58,17 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 			return nil, fmt.Errorf("GET: stored value for %q is not a string", key)
 		}
 		return resp.AppendBulkString(s), nil
+	case "RPUSH":
+		list := make([]string, 0)
+
+		if len(args) < 2 {
+			return nil, fmt.Errorf("wrong number of arguments for 'RPUSH'")
+		}
+
+		list = append(list, args[1:]...)
+
+		return resp.AppendInteger(int64(len(list))), nil
+
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
