@@ -6,64 +6,64 @@ import (
 	"testing"
 )
 
-func TestReadValue(t *testing.T) {
+func TestReadRESP(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    Value
+		want    RESP
 		wantErr bool
 	}{
 		{
 			name:  "simple string",
 			input: "+OK\r\n",
-			want:  Value{Type: SimpleString, Str: "OK"},
+			want:  RESP{Type: SimpleString, Str: "OK"},
 		},
 		{
 			name:  "error",
 			input: "-ERR bad\r\n",
-			want:  Value{Type: Error, Err: "ERR bad"},
+			want:  RESP{Type: Error, Err: "ERR bad"},
 		},
 		{
 			name:  "integer",
 			input: ":42\r\n",
-			want:  Value{Type: Integer, Int: 42},
+			want:  RESP{Type: Integer, Int: 42},
 		},
 		{
 			name:  "negative integer",
 			input: ":-99\r\n",
-			want:  Value{Type: Integer, Int: -99},
+			want:  RESP{Type: Integer, Int: -99},
 		},
 		{
 			name:  "bulk string",
 			input: "$5\r\nhello\r\n",
-			want:  Value{Type: BulkString, Str: "hello"},
+			want:  RESP{Type: BulkString, Str: "hello"},
 		},
 		{
 			name:  "empty bulk",
 			input: "$0\r\n\r\n",
-			want:  Value{Type: BulkString, Str: ""},
+			want:  RESP{Type: BulkString, Str: ""},
 		},
 		{
 			name:  "null bulk",
 			input: "$-1\r\n",
-			want:  Value{Type: BulkString, Null: true},
+			want:  RESP{Type: BulkString, Null: true},
 		},
 		{
 			name:  "null array",
 			input: "*-1\r\n",
-			want:  Value{Type: Array, Null: true},
+			want:  RESP{Type: Array, Null: true},
 		},
 		{
 			name:  "empty array",
 			input: "*0\r\n",
-			want:  Value{Type: Array, Elems: []Value{}},
+			want:  RESP{Type: Array, Elems: []RESP{}},
 		},
 		{
 			name:  "array of bulks",
 			input: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n",
-			want: Value{
+			want: RESP{
 				Type: Array,
-				Elems: []Value{
+				Elems: []RESP{
 					{Type: BulkString, Str: "foo"},
 					{Type: BulkString, Str: "bar"},
 				},
@@ -72,12 +72,12 @@ func TestReadValue(t *testing.T) {
 		{
 			name:  "nested array",
 			input: "*1\r\n*1\r\n$4\r\nping\r\n",
-			want: Value{
+			want: RESP{
 				Type: Array,
-				Elems: []Value{
+				Elems: []RESP{
 					{
 						Type: Array,
-						Elems: []Value{
+						Elems: []RESP{
 							{Type: BulkString, Str: "ping"},
 						},
 					},
@@ -103,14 +103,14 @@ func TestReadValue(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !valueEqual(got, tt.want) {
+			if !RESPEqual(got, tt.want) {
 				t.Errorf("got %+v, want %+v", got, tt.want)
 			}
 		})
 	}
 }
 
-func valueEqual(a, b Value) bool {
+func RESPEqual(a, b RESP) bool {
 	if a.Type != b.Type || a.Str != b.Str || a.Int != b.Int || a.Err != b.Err || a.Null != b.Null {
 		return false
 	}
@@ -118,14 +118,14 @@ func valueEqual(a, b Value) bool {
 		return false
 	}
 	for i := range a.Elems {
-		if !valueEqual(a.Elems[i], b.Elems[i]) {
+		if !RESPEqual(a.Elems[i], b.Elems[i]) {
 			return false
 		}
 	}
 	return true
 }
 
-func TestReadValue_pipelining(t *testing.T) {
+func TestReadRESP_pipelining(t *testing.T) {
 	in := "+PONG\r\n+PONG\r\n"
 	r := bufio.NewReader(strings.NewReader(in))
 	v1, err := ReadValue(r)
@@ -145,9 +145,9 @@ func TestReadValue_pipelining(t *testing.T) {
 }
 
 func TestParseCommand(t *testing.T) {
-	v := Value{
+	v := RESP{
 		Type: Array,
-		Elems: []Value{
+		Elems: []RESP{
 			{Type: BulkString, Str: "ping"},
 		},
 	}
@@ -156,9 +156,9 @@ func TestParseCommand(t *testing.T) {
 		t.Fatalf("cmd=%q args=%v err=%v", cmd, args, err)
 	}
 
-	v2 := Value{
+	v2 := RESP{
 		Type: Array,
-		Elems: []Value{
+		Elems: []RESP{
 			{Type: BulkString, Str: "echo"},
 			{Type: BulkString, Str: "Hi"},
 		},
@@ -170,16 +170,16 @@ func TestParseCommand(t *testing.T) {
 }
 
 func TestAppendEncoders_roundTrip(t *testing.T) {
-	if string(AppendSimpleString(nil, "OK")) != "+OK\r\n" {
+	if string(AppendSimpleString("OK")) != "+OK\r\n" {
 		t.Fatal("simple string encoding")
 	}
-	if string(AppendInteger(nil, 7)) != ":7\r\n" {
+	if string(AppendInteger(7)) != ":7\r\n" {
 		t.Fatal("integer encoding")
 	}
-	if string(AppendBulkString(nil, "ab")) != "$2\r\nab\r\n" {
+	if string(AppendBulkString("ab")) != "$2\r\nab\r\n" {
 		t.Fatal("bulk encoding")
 	}
-	if string(AppendError(nil, "ERR oops")) != "-ERR oops\r\n" {
+	if string(AppendError("ERR oops")) != "-ERR oops\r\n" {
 		t.Fatal("error encoding")
 	}
 }

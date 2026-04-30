@@ -10,6 +10,8 @@ import (
 
 type Type byte
 
+const CRLF = "\r\n"
+
 const (
 	SimpleString Type = iota
 	Error
@@ -18,96 +20,128 @@ const (
 	Array
 )
 
-type Value struct {
+type RESP struct {
 	Type  Type
 	Str   string // simple string or bulk body
 	Int   int64
 	Err   string // when Type is Error
-	Elems []Value
+	Elems []RESP
 	Null  bool // null bulk string or null array
 }
 
-func ReadValue(r *bufio.Reader) (Value, error) {
+// ReadValue parses a single RESP value from r.
+//
+// Format recap (RESP2):
+//
+//	+<text>\r\n                 Simple String
+//	-<text>\r\n                 Error
+//	:<number>\r\n               Integer
+//	$<len>\r\n<data>\r\n        Bulk String (len == -1 means null bulk string)
+//	*<count>\r\n<elem>...       Array (count == -1 means null array)
+//
+// Implementation notes:
+//   - We read the first type byte, then read the CRLF-terminated "header line"
+//     using readLineCRLF() for all types that have one.
+//   - Bulk strings then read exactly <len> bytes and require a trailing \r\n
+//     (readExactCRLF) to avoid accepting truncated/overlong bodies.
+//   - Arrays recursively call ReadValue() <count> times to parse each element.
+func ReadValue(r *bufio.Reader) (RESP, error) {
 	b, err := r.ReadByte()
 	if err != nil {
-		return Value{}, err
+		return RESP{}, err
 	}
 	switch b {
 	case '+':
 		line, err := readLineCRLF(r)
 		if err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
-		return Value{Type: SimpleString, Str: line}, nil
+		return RESP{Type: SimpleString, Str: line}, nil
 	case '-':
 		line, err := readLineCRLF(r)
 		if err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
-		return Value{Type: Error, Err: line}, nil
+		return RESP{Type: Error, Err: line}, nil
 	case ':':
 		line, err := readLineCRLF(r)
 		if err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
 		n, err := strconv.ParseInt(line, 10, 64)
 		if err != nil {
-			return Value{}, fmt.Errorf("invalid integer: %w", err)
+			return RESP{}, fmt.Errorf("invalid integer: %w", err)
 		}
-		return Value{Type: Integer, Int: n}, nil
+		return RESP{Type: Integer, Int: n}, nil
 	case '$':
 		line, err := readLineCRLF(r)
 		if err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
 		n, err := strconv.Atoi(line)
 		if err != nil {
-			return Value{}, fmt.Errorf("invalid bulk length: %w", err)
+			return RESP{}, fmt.Errorf("invalid bulk length: %w", err)
 		}
+
+		// if the bulk length is -1, it means the bulk string is null
 		if n == -1 {
-			return Value{Type: BulkString, Null: true}, nil
+			return RESP{Type: BulkString, Null: true}, nil
 		}
+
+		// if the bulk length is less than -1, it means the bulk string is invalid
 		if n < -1 {
-			return Value{}, fmt.Errorf("invalid bulk length %d", n)
+			return RESP{}, fmt.Errorf("invalid bulk length %d", n)
 		}
+
 		body := make([]byte, n)
+
 		if _, err := io.ReadFull(r, body); err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
+
 		if err := readExactCRLF(r); err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
-		return Value{Type: BulkString, Str: string(body)}, nil
+
+		return RESP{Type: BulkString, Str: string(body)}, nil
 	case '*':
 		line, err := readLineCRLF(r)
 		if err != nil {
-			return Value{}, err
+			return RESP{}, err
 		}
 		cnt, err := strconv.Atoi(line)
+
 		if err != nil {
-			return Value{}, fmt.Errorf("invalid array length: %w", err)
+			return RESP{}, fmt.Errorf("invalid array length: %w", err)
 		}
+
 		if cnt == -1 {
-			return Value{Type: Array, Null: true}, nil
+			return RESP{Type: Array, Null: true}, nil
 		}
+
 		if cnt < -1 {
-			return Value{}, fmt.Errorf("invalid array length %d", cnt)
+			return RESP{}, fmt.Errorf("invalid array length %d", cnt)
 		}
-		elems := make([]Value, 0, cnt)
+
+		elems := make([]RESP, 0, cnt)
 		for i := 0; i < cnt; i++ {
 			v, err := ReadValue(r)
 			if err != nil {
-				return Value{}, err
+				return RESP{}, err
 			}
 			elems = append(elems, v)
 		}
-		return Value{Type: Array, Elems: elems}, nil
+		return RESP{Type: Array, Elems: elems}, nil
 	default:
-		return Value{}, fmt.Errorf("unknown RESP type byte %q", b)
+		return RESP{}, fmt.Errorf("unknown RESP type byte %q", b)
 	}
 }
 
-// Read one RESP line that must end with `\r\n` and returns the content without that terminator
+// readLineCRLF reads bytes up to '\n' and enforces a "\r\n" line ending.
+// It returns only the payload (without the trailing "\r\n").
+//
+// Example: input "PING\r\n" -> returns "PING".
+// If the line ends with "\n" without a preceding "\r", it returns "invalid line ending".
 func readLineCRLF(r *bufio.Reader) (string, error) {
 	line, err := r.ReadBytes('\n')
 
@@ -124,6 +158,7 @@ func readLineCRLF(r *bufio.Reader) (string, error) {
 	return string(line[:len(line)-2]), nil
 }
 
+// readExactCRLF consumes the exact 2-byte terminator that RESP requires immediately after a bulk string’s n payload bytes: \r\n.
 func readExactCRLF(r *bufio.Reader) error {
 	cr, err := r.ReadByte()
 	if err != nil {
@@ -142,39 +177,25 @@ func readExactCRLF(r *bufio.Reader) error {
 	return nil
 }
 
-// AppendSimpleString appends a RESP simple string (+...\r\n).
-func AppendSimpleString(buf []byte, s string) []byte {
-	buf = append(buf, '+')
-	buf = append(buf, s...)
-	return append(buf, '\r', '\n')
+func AppendSimpleString(s string) []byte {
+	return []byte("+" + s + CRLF)
 }
 
-// AppendInteger appends a RESP integer (:\r\n).
-func AppendInteger(buf []byte, n int64) []byte {
-	buf = append(buf, ':')
-	buf = strconv.AppendInt(buf, n, 10)
-	return append(buf, '\r', '\n')
+func AppendInteger(n int64) []byte {
+	return []byte(":" + strconv.FormatInt(n, 10) + CRLF)
 }
 
-// AppendBulkString appends a RESP bulk string ($<len>\r\n...\r\n).
-func AppendBulkString(buf []byte, s string) []byte {
-	buf = append(buf, '$')
-	buf = strconv.AppendInt(buf, int64(len(s)), 10)
-	buf = append(buf, '\r', '\n')
-	buf = append(buf, s...)
-	return append(buf, '\r', '\n')
+func AppendBulkString(s string) []byte {
+	return []byte("$" + strconv.FormatInt(int64(len(s)), 10) + CRLF + s + CRLF)
 }
 
-// AppendError appends a RESP error (-...\r\n).
-func AppendError(buf []byte, s string) []byte {
-	buf = append(buf, '-')
-	buf = append(buf, s...)
-	return append(buf, '\r', '\n')
+func AppendError(s string) []byte {
+	return []byte("-" + s + CRLF)
 }
 
 // ParseCommand treats v as a request array: [cmd bulk, arg bulk, ...].
 // Command name is uppercased; arguments keep original case.
-func ParseCommand(v Value) (cmd string, args []string, err error) {
+func ParseCommand(v RESP) (cmd string, args []string, err error) {
 	if v.Type != Array || v.Null {
 		return "", nil, fmt.Errorf("expected non-null array")
 	}
