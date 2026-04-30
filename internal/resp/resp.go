@@ -2,6 +2,7 @@ package resp
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"strconv"
@@ -177,20 +178,62 @@ func readExactCRLF(r *bufio.Reader) error {
 	return nil
 }
 
-func AppendSimpleString(s string) []byte {
+func WriteSimpleString(s string) []byte {
 	return []byte("+" + s + CRLF)
 }
 
-func AppendInteger(n int64) []byte {
+func WriteInteger(n int64) []byte {
 	return []byte(":" + strconv.FormatInt(n, 10) + CRLF)
 }
 
-func AppendBulkString(s string) []byte {
+func WriteBulkString(s string) []byte {
 	return []byte("$" + strconv.FormatInt(int64(len(s)), 10) + CRLF + s + CRLF)
 }
 
-func AppendError(s string) []byte {
+func WriteError(s string) []byte {
 	return []byte("-" + s + CRLF)
+}
+
+func encodeRESP(v RESP) []byte {
+	switch v.Type {
+	case SimpleString:
+		return WriteSimpleString(v.Str)
+	case Error:
+		return WriteError(v.Err)
+	case Integer:
+		return WriteInteger(v.Int)
+	case BulkString:
+		if v.Null {
+			return []byte("$-1" + CRLF)
+		}
+		return WriteBulkString(v.Str)
+	case Array:
+		if v.Null {
+			return []byte("*-1" + CRLF)
+		}
+		var b bytes.Buffer
+		b.WriteByte('*')
+		b.WriteString(strconv.Itoa(len(v.Elems)))
+		b.WriteString(CRLF)
+		for _, e := range v.Elems {
+			b.Write(encodeRESP(e))
+		}
+		return b.Bytes()
+	default:
+		return WriteBulkString(v.Str)
+	}
+}
+
+// WriteArray encodes elems as *<n>\r\n followed by each element as a full RESP value.
+func WriteArray(elems []RESP) []byte {
+	var b bytes.Buffer
+	b.WriteByte('*')
+	b.WriteString(strconv.FormatInt(int64(len(elems)), 10))
+	b.WriteString(CRLF)
+	for _, e := range elems {
+		b.Write(encodeRESP(e))
+	}
+	return b.Bytes()
 }
 
 // ParseCommand treats v as a request array: [cmd bulk, arg bulk, ...].

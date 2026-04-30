@@ -26,7 +26,7 @@ func handleConnection(conn net.Conn) {
 
 		out, err := DispatchCommand(v)
 		if err != nil {
-			_, _ = conn.Write(resp.AppendError("ERR " + err.Error()))
+			_, _ = conn.Write(resp.WriteError("ERR " + err.Error()))
 			return
 		}
 		if _, err := conn.Write(out); err != nil {

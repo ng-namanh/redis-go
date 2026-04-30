@@ -170,16 +170,16 @@ func TestParseCommand(t *testing.T) {
 }
 
 func TestAppendEncoders_roundTrip(t *testing.T) {
-	if string(AppendSimpleString("OK")) != "+OK\r\n" {
+	if string(WriteSimpleString("OK")) != "+OK\r\n" {
 		t.Fatal("simple string encoding")
 	}
-	if string(AppendInteger(7)) != ":7\r\n" {
+	if string(WriteInteger(7)) != ":7\r\n" {
 		t.Fatal("integer encoding")
 	}
-	if string(AppendBulkString("ab")) != "$2\r\nab\r\n" {
+	if string(WriteBulkString("ab")) != "$2\r\nab\r\n" {
 		t.Fatal("bulk encoding")
 	}
-	if string(AppendError("ERR oops")) != "-ERR oops\r\n" {
+	if string(WriteError("ERR oops")) != "-ERR oops\r\n" {
 		t.Fatal("error encoding")
 	}
 }
