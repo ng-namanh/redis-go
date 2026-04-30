@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
@@ -34,6 +36,13 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		value := args[1]
 
 		db[key] = value
+		if len(args) > 2 && args[2] == "PX" {
+			duration, err := strconv.ParseInt(args[3], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid argument for 'SET'")
+			}
+			go deleteKeyAfterDuration(key, duration)
+		}
 		return resp.AppendSimpleString("OK"), nil
 	case "GET":
 		if len(args) < 1 {
@@ -52,4 +61,9 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
+}
+
+func deleteKeyAfterDuration(key string, duration int64) {
+	time.Sleep(time.Duration(duration) * time.Millisecond)
+	delete(db, key)
 }
