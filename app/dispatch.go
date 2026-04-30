@@ -72,6 +72,8 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		return GET(args)
 	case "RPUSH":
 		return RPUSH(args)
+	case "LPUSH":
+		return LPUSH(args)
 	case "LRANGE":
 		return LRANGE(args)
 	default:
@@ -162,6 +164,32 @@ func LRANGE(args []string) ([]byte, error) {
 		elements = append(elements, resp.RESP{Type: resp.BulkString, Str: s})
 	}
 	return resp.WriteArray(elements), nil
+}
+
+func LPUSH(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
+	}
+
+	listName := args[0]
+	vals := args[1:]
+	old := lists[listName]
+
+	// Redis: each value is pushed onto the head in argument order, so last arg is the new head.
+	// Do not use args[1:] as the first operand to append — it can alias the request buffer.
+	n := len(vals) + len(old)
+	prefix := make(list, n)
+	at := 0
+	for i := len(vals) - 1; i >= 0; i-- {
+		prefix[at] = vals[i]
+		at++
+	}
+
+	// `at` will be the position of the first element of the old list in the new list
+	copy(prefix[at:], old)
+	lists[listName] = prefix
+
+	return resp.WriteInteger(int64(len(lists[listName]))), nil
 }
 
 func deleteKeyAfterDuration(key string, duration int64) {
