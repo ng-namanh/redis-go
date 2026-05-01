@@ -1,4 +1,4 @@
-package main
+package redis
 
 import (
 	"bytes"
@@ -346,6 +346,95 @@ func TestLPOP(t *testing.T) {
 		mustDispatch(t, req("RPUSH", "k", "x"))
 		if _, err := DispatchCommand(req("LPOP", "k", "not-int")); err == nil {
 			t.Fatal("want error for bad count")
+		}
+	})
+}
+
+func TestBLPOP(t *testing.T) {
+	t.Run("matches docs example non-blocking list1 then list2 with timeout zero", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("RPUSH", "list1", "a", "b", "c"))
+		got, err := DispatchCommand(req("BLPOP", "list1", "list2", "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{Type: resp.BulkString, Str: "list1"},
+			{Type: resp.BulkString, Str: "a"},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("returns first nonempty key scanned left to right", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("RPUSH", "l2", "hello"))
+		mustDispatch(t, req("RPUSH", "l3", "bye"))
+		got, err := DispatchCommand(req("BLPOP", "l_miss", "l2", "l3", "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{Type: resp.BulkString, Str: "l2"},
+			{Type: resp.BulkString, Str: "hello"},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("errors when fewer than key and timeout arguments", func(t *testing.T) {
+		resetStores()
+		if _, err := DispatchCommand(req("BLPOP")); err == nil {
+			t.Fatal("want error")
+		}
+		resetStores()
+		if _, err := DispatchCommand(req("BLPOP", "onlykey")); err == nil {
+			t.Fatal("want error")
+		}
+	})
+
+	t.Run("WRONGTYPE when earliest key lists string cache", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("SET", "blocked", "not-a-list"))
+		mustDispatch(t, req("RPUSH", "oklist", "x"))
+		_, err := DispatchCommand(req("BLPOP", "blocked", "oklist", "0"))
+		if err == nil {
+			t.Fatal("want WRONGTYPE from first scanned key holding wrong type")
+		}
+		if !strings.Contains(err.Error(), "WRONGTYPE") {
+			t.Fatalf("got %v", err)
+		}
+	})
+
+	t.Run("variadic_lpush_queues_head_like_redis_2_6_then_blpop_returns_leftmost_element", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("LPUSH", "foo", "a", "b", "c"))
+		got, err := DispatchCommand(req("BLPOP", "foo", "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{Type: resp.BulkString, Str: "foo"},
+			{Type: resp.BulkString, Str: "c"},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("timeoutExpires_returns_null_array_when_no_push", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("blocks up to 1s waiting for expiry")
+		}
+		resetStores()
+		got, err := DispatchCommand(req("BLPOP", "ghost", "1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "*-1\r\n" {
+			t.Fatalf("after timeout Redis returns null array reply; got %q want *-1\\r\\n", got)
 		}
 	})
 }
