@@ -66,11 +66,11 @@ func listsRPush(key string, elems []string) int {
 
 func listsLPush(key string, vals []string) int {
 	old := lists[key]
-	n := len(vals) + len(old)
-	prefix := make(list, n)
-	at := 0
+	n := len(vals) + len(old) // new length of the list
+	prefix := make(list, n)   // prefix is the new list
+	at := 0                   // at is the index of the first element to push
 	for i := len(vals) - 1; i >= 0; i-- {
-		prefix[at] = vals[i]
+		prefix[at] = vals[i] // push the values to the prefix
 		at++
 	}
 	copy(prefix[at:], old)
@@ -83,9 +83,11 @@ func getPoppedElements(key string, n int) []string {
 	if len(lst) == 0 || n <= 0 {
 		return nil
 	}
-	capN := min(n, len(lst))
-	popped := append(list(nil), lst[:capN]...)
-	lists[key] = append(list(nil), lst[capN:]...)
+
+	at := min(n, len(lst))
+	popped := append(list(nil), lst[:at]...)
+	lists[key] = append(list(nil), lst[at:]...)
+
 	if len(lists[key]) == 0 {
 		delete(lists, key)
 	}
@@ -100,7 +102,11 @@ func RPUSH(args []string) ([]byte, error) {
 	listName := args[0]
 	values := append([]string(nil), args[1:]...)
 
+	listMu.Lock()
+	defer listMu.Unlock()
+
 	n := listsRPush(listName, values)
+	flushBLPOPAfterPush() // wake up the blocked clients
 	return resp.WriteInteger(int64(n)), nil
 }
 
@@ -119,6 +125,9 @@ func LRANGE(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid argument for 'LRANGE'")
 	}
 
+	listMu.Lock()
+	defer listMu.Unlock()
+
 	sub := lrangeSlice(lists[listName], start, end)
 	elements := make([]resp.RESP, 0, len(sub))
 	for _, s := range sub {
@@ -127,15 +136,22 @@ func LRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(elements), nil
 }
 
+// Insert all the specified values at the head of the list stored at key.
+// If key does not exist, it is created as empty list before performing the push operations.
+// When key holds a value that is not a list, an error is returned.
 func LPUSH(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
 	}
 
 	listName := args[0]
-	vals := append([]string(nil), args[1:]...)
+	vals := append([]string(nil), args[1:]...) // values to push to the list
+
+	listMu.Lock()
+	defer listMu.Unlock()
 
 	n := listsLPush(listName, vals)
+	flushBLPOPAfterPush()
 	return resp.WriteInteger(int64(n)), nil
 }
 
@@ -145,6 +161,9 @@ func LLEN(args []string) ([]byte, error) {
 	}
 
 	listName := args[0]
+	listMu.Lock()
+	defer listMu.Unlock()
+
 	if _, holdsKey := cache[listName]; holdsKey {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
@@ -163,6 +182,9 @@ func LPOP(args []string) ([]byte, error) {
 	if _, inCache := cache[key]; inCache {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
+
+	listMu.Lock()
+	defer listMu.Unlock()
 
 	if listsLen(key) == 0 {
 		return []byte("$-1" + resp.CRLF), nil
@@ -184,73 +206,6 @@ func LPOP(args []string) ([]byte, error) {
 		out = append(out, resp.RESP{Type: resp.BulkString, Str: s})
 	}
 	return resp.WriteArray(out), nil
-}
-
-// BLPOP implements sync semantics matching tests: first non-empty list wins;
-// if timeout > 0 and nothing to pop initially, sleeps then retries once before nil array reply.
-func BLPOP(args []string) ([]byte, error) {
-	if len(args) < 2 {
-		return nil, fmt.Errorf("wrong number of arguments for 'BLPOP'")
-	}
-
-	timeoutRaw := args[len(args)-1]                 // Last argument is the timeout
-	keys := args[:len(args)-1]                      // Remaining arguments except the timeout are the keys
-	tsec, err := strconv.ParseFloat(timeoutRaw, 64) // Parse the timeout as a float
-
-	if err != nil || tsec < 0 {
-		return nil, fmt.Errorf("invalid argument for 'BLPOP'")
-	}
-
-	// check if the provided keys are in the lists map
-	for _, k := range keys {
-		if _, in := lists[k]; !in {
-			return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
-		}
-	}
-
-	tryFirst := func() ([]byte, error) {
-		for _, k := range keys {
-			popped := getPoppedElements(k, 1)
-			if len(popped) == 1 {
-				return resp.WriteArray([]resp.RESP{
-					{Type: resp.BulkString, Str: k},
-					{Type: resp.BulkString, Str: popped[0]},
-				}), nil
-			}
-		}
-		return nil, nil
-	}
-
-	b, err := tryFirst()
-	if err != nil {
-		return nil, err
-	}
-	if b != nil {
-		return b, nil
-	}
-
-	if tsec > 0 {
-		time.Sleep(time.Duration(tsec * float64(time.Second)))
-		b, err = tryFirst()
-		if err != nil {
-			return nil, err
-		}
-		if b != nil {
-			return b, nil
-		}
-		return []byte("*-1" + resp.CRLF), nil
-	}
-
-	for {
-		b, err := tryFirst()
-		if err != nil {
-			return nil, err
-		}
-		if b != nil {
-			return b, nil
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 }
 
 func deleteKeyAfterDuration(key string, duration int64) {

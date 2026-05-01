@@ -9,8 +9,11 @@ import (
 )
 
 func resetStores() {
+	listMu.Lock()
+	defer listMu.Unlock()
 	cache = make(map[string]any)
 	lists = make(map[string]list)
+	blpopWaiters = nil
 }
 
 func req(parts ...string) resp.RESP {
