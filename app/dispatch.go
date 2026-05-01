@@ -76,6 +76,10 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		return LPUSH(args)
 	case "LRANGE":
 		return LRANGE(args)
+	case "LLEN":
+		return LLEN(args)
+	case "LPOP":
+		return LPOP(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
@@ -184,12 +188,80 @@ func LPUSH(args []string) ([]byte, error) {
 		prefix[at] = vals[i]
 		at++
 	}
-
-	// `at` will be the position of the first element of the old list in the new list
 	copy(prefix[at:], old)
 	lists[listName] = prefix
 
 	return resp.WriteInteger(int64(len(lists[listName]))), nil
+}
+
+func LLEN(args []string) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LLEN'")
+	}
+
+	listName := args[0]
+	if _, holdsKey := cache[listName]; holdsKey {
+		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
+	}
+	return resp.WriteInteger(int64(len(lists[listName]))), nil
+}
+
+func LPOP(args []string) ([]byte, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
+	}
+	if len(args) > 2 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
+	}
+
+	key := args[0]
+	if _, inCache := cache[key]; inCache {
+		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
+	}
+
+	lst := lists[key]
+	if len(lst) == 0 {
+		return []byte("$-1" + resp.CRLF), nil
+	}
+
+	// remove first element from the selected list
+	if len(args) == 1 {
+		v := lst[0]
+		lists[key] = lst[1:]
+		if len(lists[key]) == 0 {
+			delete(lists, key)
+		}
+		return resp.WriteBulkString(v), nil
+	}
+
+	// get the count of elements to remove
+	count, err := strconv.Atoi(args[1])
+	if err != nil || count <= 0 {
+		return nil, fmt.Errorf("invalid argument for 'LPOP'")
+	}
+
+	// remove first `count` elements from the selected list
+	n := min(count, len(lst)) // if count is greater than the length of the list, remove all elements
+	popped := lst[:n]
+
+	// append the remaining elements to the selected list
+	// Do this because the selected list is a slice of the original list, and we need to update the original list.
+	lists[key] = append(list(nil), lst[n:]...)
+
+	// if the selected list is empty, delete the key
+	// Why do we need to delete the selected list from the lists map?
+	// If we don't delete the selected list from the lists map, the original list will still be in the maps, and we will have a memory leak.
+	if len(lists[key]) == 0 {
+		delete(lists, key)
+	}
+
+	out := make([]resp.RESP, 0, len(popped))
+
+	// Build the response array to convert the popped elements to RESP Bulk Strings object
+	for _, s := range popped {
+		out = append(out, resp.RESP{Type: resp.BulkString, Str: s})
+	}
+	return resp.WriteArray(out), nil
 }
 
 func deleteKeyAfterDuration(key string, duration int64) {
