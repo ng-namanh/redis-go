@@ -1,4 +1,4 @@
-package utils
+package redis
 
 import (
 	"errors"
@@ -23,6 +23,13 @@ type StreamID struct {
 // GreaterThan reports whether a is strictly greater than b (Redis ordering).
 func (a StreamID) GreaterThan(b StreamID) bool {
 	return a.Ms > b.Ms || (a.Ms == b.Ms && a.Seq > b.Seq)
+}
+
+func LastStreamEntryID(s *Stream) string {
+	if s == nil || len(s.entries) == 0 {
+		return ""
+	}
+	return s.entries[len(s.entries)-1].id
 }
 
 func splitMsSeq(id string) (msStr, seqStr string, ok bool) {

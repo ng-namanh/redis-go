@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
-	"github.com/ng-namanh/redis-go/internal/utils"
 )
 
 var streams = make(map[string]*Stream)
@@ -18,13 +17,6 @@ type Stream struct {
 type StreamEntry struct {
 	id     string
 	fields []string // flat k,v,k,v,...
-}
-
-func lastStreamEntryID(s *Stream) string {
-	if s == nil || len(s.entries) == 0 {
-		return ""
-	}
-	return s.entries[len(s.entries)-1].id
 }
 
 func XADD(args []string) ([]byte, error) {
@@ -43,36 +35,36 @@ func XADD(args []string) ([]byte, error) {
 	defer listMu.Unlock()
 
 	s := streams[streamKey]
-	lastID := lastStreamEntryID(s)
+	lastID := LastStreamEntryID(s)
 
 	var finalID string
 
 	if idStr == "*" {
-		finalID = utils.NextAutoFull(uint64(time.Now().UnixMilli()), lastID)
-	} else if pms, ok := utils.ParsePartialSeqAutoID(idStr); ok {
-		id, err := utils.NextPartialSeqStreamID(pms, lastID)
+		finalID = NextAutoFull(uint64(time.Now().UnixMilli()), lastID)
+	} else if pms, ok := ParsePartialSeqAutoID(idStr); ok {
+		id, err := NextPartialSeqStreamID(pms, lastID)
 		if err != nil {
-			if errors.Is(err, utils.ErrNotGreaterThanTop) {
-				return resp.WriteError(utils.ErrXADDIDNotGreaterThanTop), nil
+			if errors.Is(err, ErrNotGreaterThanTop) {
+				return resp.WriteError(ErrXADDIDNotGreaterThanTop), nil
 			}
 			return nil, err
 		}
 		finalID = id
 	} else {
-		newID, ok := utils.ParseStreamID(idStr)
+		newID, ok := ParseStreamID(idStr)
 		if !ok {
 			return nil, fmt.Errorf("Invalid stream ID")
 		}
 		if newID.Ms == 0 && newID.Seq == 0 {
-			return resp.WriteError(utils.ErrXADDIDMustBeGreater0), nil
+			return resp.WriteError(ErrXADDIDMustBeGreater0), nil
 		}
 		if lastID != "" {
-			lastStreamID, ok := utils.ParseStreamID(lastID)
+			lastStreamID, ok := ParseStreamID(lastID)
 			if !ok {
 				return nil, fmt.Errorf("Invalid stream ID")
 			}
 			if !newID.GreaterThan(lastStreamID) {
-				return resp.WriteError(utils.ErrXADDIDNotGreaterThanTop), nil
+				return resp.WriteError(ErrXADDIDNotGreaterThanTop), nil
 			}
 		}
 		finalID = idStr
