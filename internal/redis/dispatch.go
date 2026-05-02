@@ -36,6 +36,10 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		return LPOP(args)
 	case "BLPOP":
 		return BLPOP(args)
+	case "TYPE":
+		return TYPE(args)
+	case "XADD":
+		return XADD(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}

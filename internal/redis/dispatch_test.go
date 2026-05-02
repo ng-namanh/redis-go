@@ -13,6 +13,7 @@ func resetStores() {
 	defer listMu.Unlock()
 	cache = make(map[string]any)
 	lists = make(map[string]list)
+	streams = make(map[string]*Stream)
 	blpopWaiters = nil
 }
 
@@ -108,6 +109,150 @@ func TestGET(t *testing.T) {
 		cache["n"] = 42
 		if _, err := DispatchCommand(req("GET", "n")); err == nil {
 			t.Fatal("want error")
+		}
+	})
+}
+
+// TestTYPE specifies behavior from docs/type.md (RESP2 simple string: type name or "none").
+// Implement TYPE in package redis and register it in DispatchCommand; these tests call TYPE directly.
+func TestTYPE(t *testing.T) {
+	t.Run("errors when arity is not exactly one key", func(t *testing.T) {
+		resetStores()
+		if _, err := TYPE([]string{}); err == nil {
+			t.Fatal("want error for zero arguments")
+		}
+		resetStores()
+		if _, err := TYPE([]string{"a", "b"}); err == nil {
+			t.Fatal("want error for two arguments")
+		}
+	})
+
+	t.Run("missing key returns simple string none", func(t *testing.T) {
+		resetStores()
+		got, err := TYPE([]string{"does-not-exist"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteSimpleString("none")
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("key from SET is string", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("SET", "k1", "v"))
+		got, err := TYPE([]string{"k1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("string")) {
+			t.Fatalf("got %q, want +string\\r\\n", got)
+		}
+	})
+
+	t.Run("key from list operations is list", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("RPUSH", "mylist", "x"))
+		got, err := TYPE([]string{"mylist"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("list")) {
+			t.Fatalf("got %q, want +list\\r\\n", got)
+		}
+	})
+
+	t.Run("list type after LPUSH only", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("LPUSH", "other", "y"))
+		got, err := TYPE([]string{"other"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("list")) {
+			t.Fatalf("got %q, want +list\\r\\n", got)
+		}
+	})
+
+	t.Run("stream key returns stream", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("XADD", "s", "0-1", "foo", "bar"))
+		got, err := TYPE([]string{"s"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("stream")) {
+			t.Fatalf("got %q, want +stream\\r\\n", got)
+		}
+	})
+}
+
+// TestXADD specifies behavior from docs/xadd.md (explicit ID, bulk string reply; TYPE is stream).
+func TestXADD(t *testing.T) {
+	t.Run("errors when fewer than key id and one field pair", func(t *testing.T) {
+		resetStores()
+		if _, err := XADD([]string{"sk"}); err == nil {
+			t.Fatal("want error")
+		}
+		resetStores()
+		if _, err := XADD([]string{"sk", "0-1"}); err == nil {
+			t.Fatal("want error")
+		}
+		resetStores()
+		if _, err := XADD([]string{"sk", "0-1", "onlyfield"}); err == nil {
+			t.Fatal("want error")
+		}
+	})
+
+	t.Run("returns id as bulk string (Codecrafters example 0-1)", func(t *testing.T) {
+		resetStores()
+		got, err := DispatchCommand(req("XADD", "stream_key", "0-1", "foo", "bar"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteBulkString("0-1")
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q, want %q (e.g. $3\\r\\n0-1\\r\\n)", got, want)
+		}
+	})
+
+	t.Run("returns id as bulk string for multi-field entry", func(t *testing.T) {
+		resetStores()
+		id := "1526919030474-0"
+		got, err := DispatchCommand(req("XADD", "weather", id, "temperature", "36", "humidity", "95"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteBulkString(id)) {
+			t.Fatalf("got %q, want bulk %q", got, id)
+		}
+	})
+
+	t.Run("TYPE stream_key is stream after XADD", func(t *testing.T) {
+		resetStores()
+		mustDispatch(t, req("XADD", "stream_key", "0-1", "foo", "bar"))
+		got, err := DispatchCommand(req("TYPE", "stream_key"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("stream")) {
+			t.Fatalf("got %q, want +stream\\r\\n", got)
+		}
+	})
+
+	t.Run("creates stream when key did not exist", func(t *testing.T) {
+		resetStores()
+		_, err := DispatchCommand(req("XADD", "new_stream", "1-0", "k", "v"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := TYPE([]string{"new_stream"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, resp.WriteSimpleString("stream")) {
+			t.Fatalf("got %q", got)
 		}
 	})
 }

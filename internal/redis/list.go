@@ -138,7 +138,6 @@ func LRANGE(args []string) ([]byte, error) {
 
 // Insert all the specified values at the head of the list stored at key.
 // If key does not exist, it is created as empty list before performing the push operations.
-// When key holds a value that is not a list, an error is returned.
 func LPUSH(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
@@ -170,6 +169,7 @@ func LLEN(args []string) ([]byte, error) {
 	return resp.WriteInteger(int64(listsLen(listName))), nil
 }
 
+// Remove and return the first element of the list stored at key.
 func LPOP(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
