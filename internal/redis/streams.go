@@ -1,12 +1,16 @@
 package redis
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
+	"github.com/ng-namanh/redis-go/internal/utils"
 )
 
-// Minimal Stream storage for XADD (docs/xadd.md): explicit IDs only, no MAXLEN/MINID options.
+var streams = make(map[string]*Stream)
+
 type Stream struct {
 	entries []StreamEntry
 }
@@ -16,7 +20,12 @@ type StreamEntry struct {
 	fields []string // flat k,v,k,v,...
 }
 
-var streams = make(map[string]*Stream)
+func lastStreamEntryID(s *Stream) string {
+	if s == nil || len(s.entries) == 0 {
+		return ""
+	}
+	return s.entries[len(s.entries)-1].id
+}
 
 func XADD(args []string) ([]byte, error) {
 	if len(args) < 4 {
@@ -27,24 +36,57 @@ func XADD(args []string) ([]byte, error) {
 	}
 
 	streamKey := args[0]
-	id := args[1]
+	idStr := args[1]
 	fields := args[2:]
 
 	listMu.Lock()
 	defer listMu.Unlock()
 
 	s := streams[streamKey]
-	if s == nil {
-		s = &Stream{}          // create new stream if it doesn't exist
-		streams[streamKey] = s // add to streams map
+	lastID := lastStreamEntryID(s)
+
+	var finalID string
+
+	if idStr == "*" {
+		finalID = utils.NextAutoFull(uint64(time.Now().UnixMilli()), lastID)
+	} else if pms, ok := utils.ParsePartialSeqAutoID(idStr); ok {
+		id, err := utils.NextPartialSeqStreamID(pms, lastID)
+		if err != nil {
+			if errors.Is(err, utils.ErrNotGreaterThanTop) {
+				return resp.WriteError(utils.ErrXADDIDNotGreaterThanTop), nil
+			}
+			return nil, err
+		}
+		finalID = id
+	} else {
+		newID, ok := utils.ParseStreamID(idStr)
+		if !ok {
+			return nil, fmt.Errorf("Invalid stream ID")
+		}
+		if newID.Ms == 0 && newID.Seq == 0 {
+			return resp.WriteError(utils.ErrXADDIDMustBeGreater0), nil
+		}
+		if lastID != "" {
+			lastStreamID, ok := utils.ParseStreamID(lastID)
+			if !ok {
+				return nil, fmt.Errorf("Invalid stream ID")
+			}
+			if !newID.GreaterThan(lastStreamID) {
+				return resp.WriteError(utils.ErrXADDIDNotGreaterThanTop), nil
+			}
+		}
+		finalID = idStr
 	}
 
-	// add new entry to stream
+	if s == nil {
+		s = &Stream{}
+		streams[streamKey] = s
+	}
 	s.entries = append(s.entries, StreamEntry{
-		id:     id,
+		id:     finalID,
 		fields: append([]string(nil), fields...),
 	})
-	return resp.WriteBulkString(id), nil
+	return resp.WriteBulkString(finalID), nil
 }
 
 // TYPE implements Redis TYPE per docs/type.md: simple string reply with the type name, or "none".

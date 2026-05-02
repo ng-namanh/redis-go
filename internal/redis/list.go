@@ -136,7 +136,7 @@ func LRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(elements), nil
 }
 
-// Insert all the specified values at the head of the list stored at key.
+// Insert all the specified values at the end of the list stored at key.
 // If key does not exist, it is created as empty list before performing the push operations.
 func LPUSH(args []string) ([]byte, error) {
 	if len(args) < 2 {
@@ -154,6 +154,7 @@ func LPUSH(args []string) ([]byte, error) {
 	return resp.WriteInteger(int64(n)), nil
 }
 
+// Return the length of the list stored at key.
 func LLEN(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LLEN'")
