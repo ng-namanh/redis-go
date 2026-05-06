@@ -2,6 +2,7 @@ package redis_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/ng-namanh/redis-go/internal/redis"
@@ -244,6 +245,176 @@ func TestXADD(t *testing.T) {
 		}
 		if mustReadBulkString(t, got) != "0-1" {
 			t.Fatalf("got %s", got)
+		}
+	})
+}
+
+func TestXRANGE(t *testing.T) {
+	t.Run("returns inclusive range 0-2 through 0-3 as nested RESP arrays", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "stream_key", "0-1", "foo", "bar"))
+		mustDispatch(t, req("XADD", "stream_key", "0-2", "bar", "baz"))
+		mustDispatch(t, req("XADD", "stream_key", "0-3", "baz", "foo"))
+		got, err := redis.DispatchCommand(req("XRANGE", "stream_key", "0-2", "0-3"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "0-2"},
+					{
+						Type: resp.Array,
+						Elems: []resp.RESP{
+							{Type: resp.BulkString, Str: "bar"},
+							{Type: resp.BulkString, Str: "baz"},
+						},
+					},
+				},
+			},
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "0-3"},
+					{
+						Type: resp.Array,
+						Elems: []resp.RESP{
+							{Type: resp.BulkString, Str: "baz"},
+							{Type: resp.BulkString, Str: "foo"},
+						},
+					},
+				},
+			},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("milliseconds-only bounds include all sequences in that ms window", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "some_key", "1526985054069-0", "temperature", "36", "humidity", "95"))
+		mustDispatch(t, req("XADD", "some_key", "1526985054079-0", "temperature", "37", "humidity", "94"))
+		got, err := redis.DispatchCommand(req("XRANGE", "some_key", "1526985054069", "1526985054079"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "1526985054069-0"},
+					{
+						Type: resp.Array,
+						Elems: []resp.RESP{
+							{Type: resp.BulkString, Str: "temperature"},
+							{Type: resp.BulkString, Str: "36"},
+							{Type: resp.BulkString, Str: "humidity"},
+							{Type: resp.BulkString, Str: "95"},
+						},
+					},
+				},
+			},
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "1526985054079-0"},
+					{
+						Type: resp.Array,
+						Elems: []resp.RESP{
+							{Type: resp.BulkString, Str: "temperature"},
+							{Type: resp.BulkString, Str: "37"},
+							{Type: resp.BulkString, Str: "humidity"},
+							{Type: resp.BulkString, Str: "94"},
+						},
+					},
+				},
+			},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
+	t.Run("missing key returns empty array", func(t *testing.T) {
+		redis.ResetForTesting()
+		got, err := redis.DispatchCommand(req("XRANGE", "no_such_stream", "0", "9"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "*0\r\n" {
+			t.Fatalf("got %q want *0\\r\\n", got)
+		}
+	})
+
+	t.Run("errors when arity is not key start end", func(t *testing.T) {
+		redis.ResetForTesting()
+		if _, err := redis.DispatchCommand(req("XRANGE", "k", "0")); err == nil {
+			t.Fatal("want error for too few arguments")
+		}
+		redis.ResetForTesting()
+		if _, err := redis.DispatchCommand(req("XRANGE", "k", "0", "1", "extra")); err == nil {
+			t.Fatal("want error for too many arguments")
+		}
+	})
+
+	t.Run("WRONGTYPE when key holds a string", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("SET", "k", "v"))
+		_, err := redis.DispatchCommand(req("XRANGE", "k", "0-0", "1-0"))
+		if err == nil {
+			t.Fatal("want WRONGTYPE")
+		}
+		if !strings.Contains(err.Error(), "WRONGTYPE") {
+			t.Fatalf("got %v", err)
+		}
+	})
+
+	t.Run("returns empty array when start is after end", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "s", "0-1", "a", "b"))
+		got, err := redis.DispatchCommand(req("XRANGE", "s", "0-3", "0-2"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "*0\r\n" {
+			t.Fatalf("got %q", got)
+		}
+	})
+
+	t.Run("single id inclusive range returns one entry", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "s", "1-0", "x", "y"))
+		got, err := redis.DispatchCommand(req("XRANGE", "s", "1-0", "1-0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "1-0"},
+					{
+						Type: resp.Array,
+						Elems: []resp.RESP{
+							{Type: resp.BulkString, Str: "x"},
+							{Type: resp.BulkString, Str: "y"},
+						},
+					},
+				},
+			},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("invalid stream id returns error", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "s", "0-1", "a", "b"))
+		if _, err := redis.DispatchCommand(req("XRANGE", "s", "not-an-id", "0-2")); err == nil {
+			t.Fatal("want error")
 		}
 	})
 }

@@ -14,15 +14,24 @@ const (
 // ErrNotGreaterThanTop means the proposed ID is not strictly greater than the stream's last entry.
 var ErrNotGreaterThanTop = errors.New("stream id not greater than top")
 
-// StreamID is a Redis stream entry id: <milliseconds>-<sequence>.
-type StreamID struct {
+// StreamId is a Redis stream entry id: <milliseconds>-<sequence>.
+type StreamId struct {
 	Ms  uint64
 	Seq uint64
 }
 
 // GreaterThan reports whether a is strictly greater than b (Redis ordering).
-func (a StreamID) GreaterThan(b StreamID) bool {
+func (a StreamId) GreaterThan(b StreamId) bool {
 	return a.Ms > b.Ms || (a.Ms == b.Ms && a.Seq > b.Seq)
+}
+
+// Splits an ID into milliseconds and sequence parts from the "<ms>-<seq>" format
+func splitMsSeq(id string) (msStr, seqStr string, ok bool) {
+	i := strings.IndexByte(id, '-')
+	if i <= 0 || i == len(id)-1 {
+		return "", "", false
+	}
+	return id[:i], id[i+1:], true
 }
 
 func LastStreamEntryID(s *Stream) string {
@@ -32,26 +41,45 @@ func LastStreamEntryID(s *Stream) string {
 	return s.entries[len(s.entries)-1].id
 }
 
-func splitMsSeq(id string) (msStr, seqStr string, ok bool) {
-	i := strings.IndexByte(id, '-')
-	if i <= 0 || i == len(id)-1 {
-		return "", "", false
+// ParseXRANGEBound parses an XRANGE start or end ID: full "<ms>-<seq>", or a
+// milliseconds-only token. For ms-only, start uses sequence 0; end uses the
+// maximum sequence so all entries in that millisecond are included.
+func ParseXRANGEBound(s string, isStart bool) (StreamId, bool) {
+	if strings.Contains(s, "-") {
+		return ParseStreamID(s)
 	}
-	return id[:i], id[i+1:], true
+	ms, err := strconv.ParseUint(s, 10, 64)
+	if err != nil || s == "" {
+		return StreamId{}, false
+	}
+	if isStart {
+		return StreamId{Ms: ms, Seq: 0}, true
+	}
+	return StreamId{Ms: ms, Seq: ^uint64(0)}, true
+}
+
+// StreamIdGte reports whether a >= b in Redis stream ID order (inclusive).
+func StreamIdGte(a, b StreamId) bool {
+	return a.Ms > b.Ms || (a.Ms == b.Ms && a.Seq >= b.Seq)
+}
+
+// StreamIdLte reports whether a <= b in Redis stream ID order (inclusive).
+func StreamIdLte(a, b StreamId) bool {
+	return a.Ms < b.Ms || (a.Ms == b.Ms && a.Seq <= b.Seq)
 }
 
 // ParseStreamID parses an explicit "<ms>-<seq>" id (single '-', decimal parts).
-func ParseStreamID(id string) (StreamID, bool) {
+func ParseStreamID(id string) (StreamId, bool) {
 	msStr, seqStr, ok := splitMsSeq(id)
-	if !ok || strings.Contains(seqStr, "-") {
-		return StreamID{}, false
+	if !ok || strings.Contains(seqStr, "-") { // only one '-' separator
+		return StreamId{}, false
 	}
 	ms, err1 := strconv.ParseUint(msStr, 10, 64)
 	seq, err2 := strconv.ParseUint(seqStr, 10, 64)
 	if err1 != nil || err2 != nil {
-		return StreamID{}, false
+		return StreamId{}, false
 	}
-	return StreamID{Ms: ms, Seq: seq}, true
+	return StreamId{Ms: ms, Seq: seq}, true
 }
 
 // FormatStreamID renders "<ms>-<seq>".
