@@ -19,6 +19,9 @@ type StreamEntry struct {
 	fields []string // flat k,v,k,v,...
 }
 
+// XADD appends an entry to a stream key and returns the final entry ID.
+// It supports Redis-style auto IDs ("*") and partial sequence auto IDs ("<ms>-*"),
+// and enforces monotonically increasing IDs per stream.
 func XADD(args []string) ([]byte, error) {
 	if len(args) < 4 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XADD'")
@@ -81,6 +84,8 @@ func XADD(args []string) ([]byte, error) {
 	return resp.WriteBulkString(finalID), nil
 }
 
+// XRANGE returns stream entries in the inclusive [start, end] ID range for a stream key.
+// If the key doesn't exist, the range is invalid, or end < start, it returns an empty array.
 func XRANGE(args []string) ([]byte, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XRANGE'")
@@ -115,6 +120,8 @@ func XRANGE(args []string) ([]byte, error) {
 	}
 
 	out := make([]resp.RESP, 0)
+
+	// Iterate over the stream entries and add them to the output array if they are in the range
 	for _, e := range s.entries {
 		eid, ok := ParseStreamID(e.id)
 
@@ -142,7 +149,7 @@ func XRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(out), nil
 }
 
-// TYPE implements Redis TYPE per docs/type.md: simple string reply with the type name, or "none".
+// TYPE implements Redis TYPE (per docs/type.md): returns the key's type name, or "none".
 // Supported in this server: stream (XADD), list, string (SET/GET cache).
 func TYPE(args []string) ([]byte, error) {
 	if len(args) != 1 {

@@ -292,6 +292,52 @@ func TestXRANGE(t *testing.T) {
 		}
 	})
 
+	t.Run("special IDs - and + return full stream", func(t *testing.T) {
+		redis.ResetForTesting()
+		mustDispatch(t, req("XADD", "s", "0-1", "a", "1"))
+		mustDispatch(t, req("XADD", "s", "0-2", "b", "2"))
+		mustDispatch(t, req("XADD", "s", "0-3", "c", "3"))
+		got, err := redis.DispatchCommand(req("XRANGE", "s", "-", "+"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := resp.WriteArray([]resp.RESP{
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "0-1"},
+					{Type: resp.Array, Elems: []resp.RESP{
+						{Type: resp.BulkString, Str: "a"},
+						{Type: resp.BulkString, Str: "1"},
+					}},
+				},
+			},
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "0-2"},
+					{Type: resp.Array, Elems: []resp.RESP{
+						{Type: resp.BulkString, Str: "b"},
+						{Type: resp.BulkString, Str: "2"},
+					}},
+				},
+			},
+			{
+				Type: resp.Array,
+				Elems: []resp.RESP{
+					{Type: resp.BulkString, Str: "0-3"},
+					{Type: resp.Array, Elems: []resp.RESP{
+						{Type: resp.BulkString, Str: "c"},
+						{Type: resp.BulkString, Str: "3"},
+					}},
+				},
+			},
+		})
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+
 	t.Run("milliseconds-only bounds include all sequences in that ms window", func(t *testing.T) {
 		redis.ResetForTesting()
 		mustDispatch(t, req("XADD", "some_key", "1526985054069-0", "temperature", "36", "humidity", "95"))

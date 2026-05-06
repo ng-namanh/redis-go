@@ -45,6 +45,15 @@ func LastStreamEntryID(s *Stream) string {
 // milliseconds-only token. For ms-only, start uses sequence 0; end uses the
 // maximum sequence so all entries in that millisecond are included.
 func ParseXRANGEBound(s string, isStart bool) (StreamId, bool) {
+	// Special IDs per XRANGE docs: "-" is minimal possible ID, "+" is maximal.
+	// Using 0-0 and maxUint64-maxUint64 ensures closed-interval comparisons work.
+	if s == "-" {
+		return StreamId{Ms: 0, Seq: 0}, true
+	}
+	if s == "+" {
+		return StreamId{Ms: ^uint64(0), Seq: ^uint64(0)}, true
+	}
+
 	if strings.Contains(s, "-") {
 		return ParseStreamID(s)
 	}

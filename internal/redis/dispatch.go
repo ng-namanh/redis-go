@@ -42,6 +42,8 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		return XADD(args)
 	case "XRANGE":
 		return XRANGE(args)
+	case "XREAD":
+		return XREAD(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
