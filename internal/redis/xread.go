@@ -79,6 +79,8 @@ afterOptions:
 	// Snapshot "$" IDs at command invocation time (important for BLOCK semantics).
 	reqs := make([]streamReq, 0, n)
 	listMu.Lock()
+
+	// build the stream requests
 	for si, key := range keys {
 		token := ids[si]
 		if token == "+" {
@@ -114,6 +116,7 @@ afterOptions:
 		}
 	}
 
+	// tryOnce is a helper function that tries to read the stream entries once
 	tryOnce := func() ([]resp.RESP, bool, error) {
 		listMu.Lock()
 		defer listMu.Unlock()
@@ -140,6 +143,7 @@ afterOptions:
 				continue
 			}
 
+			// if the plus flag is true, we add the last entry to the output
 			if r.plus {
 				last := s.entries[len(s.entries)-1]
 				entry := encodeStreamEntry(last.id, last.fields)
@@ -154,6 +158,7 @@ afterOptions:
 				continue
 			}
 
+			// if the plus flag is false, we add the entries to the output
 			entries := make([]resp.RESP, 0)
 			for _, e := range s.entries {
 				eid, ok := ParseStreamID(e.id)
@@ -167,9 +172,13 @@ afterOptions:
 					}
 				}
 			}
+
+			// if there are no entries, we continue to the next stream
 			if len(entries) == 0 {
 				continue
 			}
+
+			// add the entries to the output
 			out = append(out, resp.RESP{
 				Type: resp.Array,
 				Elems: []resp.RESP{
@@ -177,12 +186,15 @@ afterOptions:
 					{Type: resp.Array, Elems: entries},
 				},
 			})
+
+			// we have served the stream, so we set the served flag to true
 			served = true
 		}
 
 		return out, served, nil
 	}
 
+	// tryOnce is a helper function that tries to read the stream entries once
 	// Non-blocking attempt first.
 	out, served, err := tryOnce()
 	if err != nil {
