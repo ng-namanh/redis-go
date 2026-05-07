@@ -1,4 +1,4 @@
-package redis
+package commands
 
 import (
 	"errors"
@@ -8,7 +8,13 @@ import (
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
-var streams = make(map[string]*Stream)
+const (
+	ErrXADDIDNotGreaterThanTop = "ERR The ID specified in XADD is equal or smaller than the target stream top item"
+	ErrXADDIDMustBeGreater0    = "ERR The ID specified in XADD must be greater than 0-0"
+)
+
+// ErrNotGreaterThanTop means the proposed ID is not strictly greater than the stream's last entry.
+var ErrNotGreaterThanTop = errors.New("stream id not greater than top")
 
 type Stream struct {
 	entries []StreamEntry
@@ -20,8 +26,6 @@ type StreamEntry struct {
 }
 
 // XADD appends an entry to a stream key and returns the final entry ID.
-// It supports Redis-style auto IDs ("*") and partial sequence auto IDs ("<ms>-*"),
-// and enforces monotonically increasing IDs per stream.
 func XADD(args []string) ([]byte, error) {
 	if len(args) < 4 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XADD'")
@@ -34,8 +38,8 @@ func XADD(args []string) ([]byte, error) {
 	idStr := args[1]
 	fields := args[2:]
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	s := streams[streamKey]
 	lastID := LastStreamEntryID(s)
@@ -84,8 +88,7 @@ func XADD(args []string) ([]byte, error) {
 	return resp.WriteBulkString(finalID), nil
 }
 
-// XRANGE returns stream entries in the inclusive [start, end] ID range for a stream key.
-// If the key doesn't exist, the range is invalid, or end < start, it returns an empty array.
+// XRANGE returns stream entries in the inclusive [start, end] ID range.
 func XRANGE(args []string) ([]byte, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XRANGE'")
@@ -96,14 +99,12 @@ func XRANGE(args []string) ([]byte, error) {
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("Invalid stream ID")
 	}
-
-	// If end is < start, return empty array
 	if !StreamIdGte(end, start) {
 		return resp.WriteArray(nil), nil
 	}
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	if _, ok := lists[key]; ok {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -120,17 +121,11 @@ func XRANGE(args []string) ([]byte, error) {
 	}
 
 	out := make([]resp.RESP, 0)
-
-	// Iterate over the stream entries and add them to the output array if they are in the range
 	for _, e := range s.entries {
 		eid, ok := ParseStreamID(e.id)
-
-		// skip this entry if the ID is invalid
 		if !ok {
 			continue
 		}
-
-		// skip this entry if the ID is not in the range
 		if !StreamIdGte(eid, start) || !StreamIdLte(eid, end) {
 			continue
 		}
@@ -149,31 +144,40 @@ func XRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(out), nil
 }
 
-// TYPE implements Redis TYPE (per docs/type.md): returns the key's type name, or "none".
-// Supported in this server: stream (XADD), list, string (SET/GET cache).
+// TYPE returns the type of the value stored at key.
 func TYPE(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'TYPE'")
 	}
-
 	key := args[0]
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	if _, ok := streams[key]; ok {
 		return resp.WriteSimpleString("stream"), nil
 	}
-
 	if _, ok := lists[key]; ok {
 		return resp.WriteSimpleString("list"), nil
 	}
-
 	if raw, ok := cache[key]; ok {
 		if _, ok := raw.(string); ok {
 			return resp.WriteSimpleString("string"), nil
 		}
 	}
-
 	return resp.WriteSimpleString("none"), nil
+}
+
+func encodeStreamEntry(id string, fields []string) resp.RESP {
+	fieldElems := make([]resp.RESP, 0, len(fields))
+	for _, f := range fields {
+		fieldElems = append(fieldElems, resp.RESP{Type: resp.BulkString, Str: f})
+	}
+	return resp.RESP{
+		Type: resp.Array,
+		Elems: []resp.RESP{
+			{Type: resp.BulkString, Str: id},
+			{Type: resp.Array, Elems: fieldElems},
+		},
+	}
 }

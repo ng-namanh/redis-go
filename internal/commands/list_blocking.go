@@ -1,15 +1,12 @@
-package redis
+package commands
 
 import (
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
-
-var listMu sync.Mutex
 
 type blpopWaiter struct {
 	keys []string
@@ -25,8 +22,8 @@ func encodeBLPOPReply(key, val string) []byte {
 	})
 }
 
-// firstNonEmptyListKey returns first key that has Len>0 when scanned left→right,
-// respecting only list keys / missing keys (empty). Caller must hold listMu.
+// firstNonEmptyListKey returns the first key that has Len>0 scanned left→right.
+// Caller must hold listMu.
 func firstNonEmptyListKey(keys []string) string {
 	for _, k := range keys {
 		if len(lists[k]) > 0 {
@@ -46,14 +43,15 @@ func blpopTryPop(keys []string) ([]byte, bool) {
 	return nil, false
 }
 
-// tryServeOneBLPOPWaiter tries to serve one BLPOP waiter by popping one element from the first non-empty list key. It returns true if a waiter was served, false otherwise.
+// tryServeOneBLPOPWaiter tries to serve one BLPOP waiter.
+// Returns true if a waiter was served.
 func tryServeOneBLPOPWaiter() bool {
 	for i, w := range blpopWaiters {
-		k := firstNonEmptyListKey(w.keys) // find the first non-empty list key
+		k := firstNonEmptyListKey(w.keys)
 		if k == "" {
 			continue
 		}
-		popped := getPoppedElements(k, 1) // pop one element from the list
+		popped := getPoppedElements(k, 1)
 		if len(popped) != 1 {
 			continue
 		}
@@ -62,14 +60,13 @@ func tryServeOneBLPOPWaiter() bool {
 		select {
 		case w.ch <- encoded:
 		default:
-			// Buffered ch of size 1 should never block; safeguard no-op drop
 		}
 		return true
 	}
 	return false
 }
 
-// flushBLPOPAfterPush wakes FIFO waiters until no blocked client can be served with current lists.
+// flushBLPOPAfterPush wakes FIFO waiters until no blocked client can be served.
 func flushBLPOPAfterPush() {
 	for tryServeOneBLPOPWaiter() {
 	}
@@ -97,24 +94,24 @@ func BLPOP(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid timeout argument for 'BLPOP'")
 	}
 
-	listMu.Lock() // lock the listMu to protect the lists map
+	mutex.Lock()
 	for _, k := range keys {
 		if _, wrong := cache[k]; wrong {
-			listMu.Unlock()
+			mutex.Unlock()
 			return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
 		}
 	}
 
 	b, ok := blpopTryPop(keys)
 	if ok {
-		listMu.Unlock()
+		mutex.Unlock()
 		return b, nil
 	}
 
 	ch := make(chan []byte, 1)
 	w := &blpopWaiter{keys: append([]string(nil), keys...), ch: ch}
 	blpopWaiters = append(blpopWaiters, w)
-	listMu.Unlock()
+	mutex.Unlock()
 
 	if tsec > 0 {
 		timer := time.NewTimer(time.Duration(tsec * float64(time.Second)))
@@ -123,9 +120,9 @@ func BLPOP(args []string) ([]byte, error) {
 		case reply := <-ch:
 			return reply, nil
 		case <-timer.C:
-			listMu.Lock()
+			mutex.Lock()
 			removeWaiterIfQueued(w)
-			listMu.Unlock()
+			mutex.Unlock()
 			return []byte("*-1" + resp.CRLF), nil
 		}
 	}

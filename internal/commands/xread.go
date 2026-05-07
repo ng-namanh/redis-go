@@ -1,4 +1,4 @@
-package redis
+package commands
 
 import (
 	"fmt"
@@ -9,13 +9,14 @@ import (
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
-// XREAD reads entries from one or more streams, returning entries with IDs strictly greater
-// than the caller-provided IDs. It supports COUNT, BLOCK, and the special IDs "$" and "+".
+// XREAD reads entries from one or more streams, returning entries with IDs strictly
+// greater than the caller-provided IDs. It supports COUNT, BLOCK, and the special
+// IDs "$" and "+".
 func XREAD(args []string) ([]byte, error) {
 	count := -1
 	blockMs := int64(-1)
 
-	// Parse options until STREAMS.
+	// Parse options until STREAMS keyword.
 	i := 0
 	for i < len(args) {
 		switch strings.ToUpper(args[i]) {
@@ -23,29 +24,23 @@ func XREAD(args []string) ([]byte, error) {
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("wrong number of arguments for 'XREAD'")
 			}
-			// convert the COUNT argument to an integer
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil || n < 0 {
 				return nil, fmt.Errorf("invalid COUNT argument for 'XREAD'")
 			}
 			count = n
-			// we have processed the COUNT argument, so we move to the next argument
 			i += 2
 		case "BLOCK":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("wrong number of arguments for 'XREAD'")
 			}
-
-			// convert the BLOCK argument to an integer
 			n, err := strconv.ParseInt(args[i+1], 10, 64)
 			if err != nil || n < 0 {
 				return nil, fmt.Errorf("invalid BLOCK argument for 'XREAD'")
 			}
 			blockMs = n
-			// we have processed the BLOCK argument, so we move to the next argument
 			i += 2
 		case "STREAMS":
-			// we have processed the STREAMS argument, so we move to the next argument
 			i++
 			goto afterOptions
 		default:
@@ -58,13 +53,11 @@ afterOptions:
 		return nil, fmt.Errorf("wrong number of arguments for 'XREAD'")
 	}
 
-	// check if the number of arguments is valid
 	remaining := args[i:]
 	if len(remaining) < 2 || len(remaining)%2 != 0 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XREAD'")
 	}
 
-	// split the remaining arguments into keys and ids
 	n := len(remaining) / 2
 	keys := remaining[:n]
 	ids := remaining[n:]
@@ -72,25 +65,22 @@ afterOptions:
 	type streamReq struct {
 		key      string
 		plus     bool
-		lastSeen StreamId // used when plus == false
+		lastSeen StreamId
 		valid    bool
 	}
 
 	// Snapshot "$" IDs at command invocation time (important for BLOCK semantics).
 	reqs := make([]streamReq, 0, n)
-	listMu.Lock()
+	mutex.Lock()
 
-	// build the stream requests
 	for si, key := range keys {
 		token := ids[si]
 		if token == "+" {
 			reqs = append(reqs, streamReq{key: key, plus: true, valid: true})
 			continue
 		}
-
 		if token == "$" {
 			s := streams[key]
-			// "$" means "from now": snapshot current last ID; if stream missing/empty, use 0-0.
 			last := LastStreamEntryID(s)
 			if last == "" {
 				reqs = append(reqs, streamReq{key: key, lastSeen: StreamId{Ms: 0, Seq: 0}, valid: true})
@@ -100,15 +90,14 @@ afterOptions:
 			reqs = append(reqs, streamReq{key: key, lastSeen: id, valid: ok})
 			continue
 		}
-
 		lastSeen, ok, err := parseXREADLastSeenID(token)
 		if err != nil {
-			listMu.Unlock()
+			mutex.Unlock()
 			return nil, err
 		}
 		reqs = append(reqs, streamReq{key: key, lastSeen: lastSeen, valid: ok})
 	}
-	listMu.Unlock()
+	mutex.Unlock()
 
 	for _, r := range reqs {
 		if !r.valid {
@@ -116,10 +105,9 @@ afterOptions:
 		}
 	}
 
-	// tryOnce is a helper function that tries to read the stream entries once
 	tryOnce := func() ([]resp.RESP, bool, error) {
-		listMu.Lock()
-		defer listMu.Unlock()
+		mutex.Lock()
+		defer mutex.Unlock()
 
 		// WRONGTYPE checks.
 		for _, r := range reqs {
@@ -142,8 +130,6 @@ afterOptions:
 			if s == nil || len(s.entries) == 0 {
 				continue
 			}
-
-			// if the plus flag is true, we add the last entry to the output
 			if r.plus {
 				last := s.entries[len(s.entries)-1]
 				entry := encodeStreamEntry(last.id, last.fields)
@@ -157,8 +143,6 @@ afterOptions:
 				served = true
 				continue
 			}
-
-			// if the plus flag is false, we add the entries to the output
 			entries := make([]resp.RESP, 0)
 			for _, e := range s.entries {
 				eid, ok := ParseStreamID(e.id)
@@ -172,13 +156,9 @@ afterOptions:
 					}
 				}
 			}
-
-			// if there are no entries, we continue to the next stream
 			if len(entries) == 0 {
 				continue
 			}
-
-			// add the entries to the output
 			out = append(out, resp.RESP{
 				Type: resp.Array,
 				Elems: []resp.RESP{
@@ -186,16 +166,11 @@ afterOptions:
 					{Type: resp.Array, Elems: entries},
 				},
 			})
-
-			// we have served the stream, so we set the served flag to true
 			served = true
 		}
-
 		return out, served, nil
 	}
 
-	// tryOnce is a helper function that tries to read the stream entries once
-	// Non-blocking attempt first.
 	out, served, err := tryOnce()
 	if err != nil {
 		return nil, err
@@ -222,31 +197,13 @@ afterOptions:
 			return resp.WriteArray(out), nil
 		}
 		if !deadline.IsZero() && time.Now().After(deadline) {
-			// RESP2 Nil reply (null bulk string) on BLOCK timeout.
 			return []byte("$-1" + resp.CRLF), nil
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func encodeStreamEntry(id string, fields []string) resp.RESP {
-	fieldElems := make([]resp.RESP, 0, len(fields))
-	for _, f := range fields {
-		fieldElems = append(fieldElems, resp.RESP{Type: resp.BulkString, Str: f})
-	}
-	return resp.RESP{
-		Type: resp.Array,
-		Elems: []resp.RESP{
-			{Type: resp.BulkString, Str: id},
-			{Type: resp.Array, Elems: fieldElems},
-		},
-	}
-}
-
 // parseXREADLastSeenID parses the "last seen" ID token for XREAD for a single stream.
-// It supports:
-//   - full "<ms>-<seq>"
-//   - milliseconds-only "<ms>" (sequence is interpreted as 0 for XREAD)
 func parseXREADLastSeenID(token string) (StreamId, bool, error) {
 	if strings.Contains(token, "-") {
 		id, ok := ParseStreamID(token)

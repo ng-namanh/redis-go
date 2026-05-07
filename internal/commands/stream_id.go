@@ -1,18 +1,9 @@
-package redis
+package commands
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 )
-
-const (
-	ErrXADDIDNotGreaterThanTop = "ERR The ID specified in XADD is equal or smaller than the target stream top item"
-	ErrXADDIDMustBeGreater0    = "ERR The ID specified in XADD must be greater than 0-0"
-)
-
-// ErrNotGreaterThanTop means the proposed ID is not strictly greater than the stream's last entry.
-var ErrNotGreaterThanTop = errors.New("stream id not greater than top")
 
 // StreamId is a Redis stream entry id: <milliseconds>-<sequence>.
 type StreamId struct {
@@ -25,7 +16,7 @@ func (a StreamId) GreaterThan(b StreamId) bool {
 	return a.Ms > b.Ms || (a.Ms == b.Ms && a.Seq > b.Seq)
 }
 
-// Splits an ID into milliseconds and sequence parts from the "<ms>-<seq>" format
+// splitMsSeq splits an ID into milliseconds and sequence parts from the "<ms>-<seq>" format.
 func splitMsSeq(id string) (msStr, seqStr string, ok bool) {
 	i := strings.IndexByte(id, '-')
 	if i <= 0 || i == len(id)-1 {
@@ -34,6 +25,7 @@ func splitMsSeq(id string) (msStr, seqStr string, ok bool) {
 	return id[:i], id[i+1:], true
 }
 
+// LastStreamEntryID returns the ID of the last entry in the stream, or "" if empty.
 func LastStreamEntryID(s *Stream) string {
 	if s == nil || len(s.entries) == 0 {
 		return ""
@@ -41,19 +33,15 @@ func LastStreamEntryID(s *Stream) string {
 	return s.entries[len(s.entries)-1].id
 }
 
-// ParseXRANGEBound parses an XRANGE start or end ID: full "<ms>-<seq>", or a
-// milliseconds-only token. For ms-only, start uses sequence 0; end uses the
-// maximum sequence so all entries in that millisecond are included.
+// ParseXRANGEBound parses an XRANGE start or end ID.
+// For ms-only tokens, start uses sequence 0; end uses the maximum sequence.
 func ParseXRANGEBound(s string, isStart bool) (StreamId, bool) {
-	// Special IDs per XRANGE docs: "-" is minimal possible ID, "+" is maximal.
-	// Using 0-0 and maxUint64-maxUint64 ensures closed-interval comparisons work.
 	if s == "-" {
 		return StreamId{Ms: 0, Seq: 0}, true
 	}
 	if s == "+" {
 		return StreamId{Ms: ^uint64(0), Seq: ^uint64(0)}, true
 	}
-
 	if strings.Contains(s, "-") {
 		return ParseStreamID(s)
 	}
@@ -67,20 +55,20 @@ func ParseXRANGEBound(s string, isStart bool) (StreamId, bool) {
 	return StreamId{Ms: ms, Seq: ^uint64(0)}, true
 }
 
-// StreamIdGte reports whether a >= b in Redis stream ID order (inclusive).
+// StreamIdGte reports whether a >= b in Redis stream ID order.
 func StreamIdGte(a, b StreamId) bool {
 	return a.Ms > b.Ms || (a.Ms == b.Ms && a.Seq >= b.Seq)
 }
 
-// StreamIdLte reports whether a <= b in Redis stream ID order (inclusive).
+// StreamIdLte reports whether a <= b in Redis stream ID order.
 func StreamIdLte(a, b StreamId) bool {
 	return a.Ms < b.Ms || (a.Ms == b.Ms && a.Seq <= b.Seq)
 }
 
-// ParseStreamID parses an explicit "<ms>-<seq>" id (single '-', decimal parts).
+// ParseStreamID parses an explicit "<ms>-<seq>" id.
 func ParseStreamID(id string) (StreamId, bool) {
 	msStr, seqStr, ok := splitMsSeq(id)
-	if !ok || strings.Contains(seqStr, "-") { // only one '-' separator
+	if !ok || strings.Contains(seqStr, "-") {
 		return StreamId{}, false
 	}
 	ms, err1 := strconv.ParseUint(msStr, 10, 64)
@@ -97,7 +85,6 @@ func FormatStreamID(ms, seq uint64) string {
 }
 
 // NextAutoFull returns the ID for XADD when the client passes "*".
-// nowMillis is usually time.Now().UnixMilli(); lastEntryID is "" if the stream is empty.
 func NextAutoFull(nowMillis uint64, lastEntryID string) string {
 	if lastEntryID == "" {
 		return FormatStreamID(nowMillis, 0)
@@ -132,7 +119,6 @@ func ParsePartialSeqAutoID(id string) (ms uint64, ok bool) {
 }
 
 // NextPartialSeqStreamID builds the ID for XADD when the client passes "<ms>-*".
-// Pass lastEntryID == "" for an empty stream.
 func NextPartialSeqStreamID(ms uint64, lastEntryID string) (finalID string, err error) {
 	if lastEntryID == "" {
 		if ms == 0 {

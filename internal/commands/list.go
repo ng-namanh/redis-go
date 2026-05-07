@@ -1,56 +1,13 @@
-package redis
+package commands
 
 import (
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
 type list []string
-
-var lists map[string]list = make(map[string]list)
-
-// lrangeSlice returns Redis LRANGE-inclusive elements for start/stop (negative indices OK).
-func lrangeSlice(l list, start, stop int) list {
-	ln := len(l)
-	if ln == 0 {
-		return nil
-	}
-
-	startIdx := start
-
-	if startIdx >= ln {
-		return nil
-	}
-
-	if startIdx < 0 {
-		startIdx += ln
-
-		if startIdx < 0 {
-			startIdx = 0
-		}
-	}
-
-	stopIdx := stop
-	if stopIdx < 0 {
-		stopIdx += ln
-		if stopIdx < 0 {
-			stopIdx = 0
-		}
-	}
-
-	if stopIdx >= ln {
-		stopIdx = ln - 1
-	}
-
-	if startIdx > stopIdx {
-		return nil
-	}
-
-	return l[startIdx : stopIdx+1]
-}
 
 func listsLen(key string) int {
 	return len(lists[key])
@@ -66,11 +23,11 @@ func listsRPush(key string, elems []string) int {
 
 func listsLPush(key string, vals []string) int {
 	old := lists[key]
-	n := len(vals) + len(old) // new length of the list
-	prefix := make(list, n)   // prefix is the new list
-	at := 0                   // at is the index of the first element to push
+	n := len(vals) + len(old)
+	prefix := make(list, n)
+	at := 0
 	for i := len(vals) - 1; i >= 0; i-- {
-		prefix[at] = vals[i] // push the values to the prefix
+		prefix[at] = vals[i]
 		at++
 	}
 	copy(prefix[at:], old)
@@ -83,38 +40,84 @@ func getPoppedElements(key string, n int) []string {
 	if len(lst) == 0 || n <= 0 {
 		return nil
 	}
-
 	at := min(n, len(lst))
 	popped := append(list(nil), lst[:at]...)
 	lists[key] = append(list(nil), lst[at:]...)
-
 	if len(lists[key]) == 0 {
 		delete(lists, key)
 	}
 	return popped
 }
 
+// lrangeSlice returns Redis LRANGE-inclusive elements for start/stop (negative indices OK).
+func lrangeSlice(l list, start, stop int) list {
+	ln := len(l)
+	if ln == 0 {
+		return nil
+	}
+	startIdx := start
+	if startIdx >= ln {
+		return nil
+	}
+	if startIdx < 0 {
+		startIdx += ln
+		if startIdx < 0 {
+			startIdx = 0
+		}
+	}
+	stopIdx := stop
+	if stopIdx < 0 {
+		stopIdx += ln
+		if stopIdx < 0 {
+			stopIdx = 0
+		}
+	}
+	if stopIdx >= ln {
+		stopIdx = ln - 1
+	}
+	if startIdx > stopIdx {
+		return nil
+	}
+	return l[startIdx : stopIdx+1]
+}
+
+// RPUSH inserts all the specified values at the tail of the list stored at key.
 func RPUSH(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'RPUSH'")
 	}
-
 	listName := args[0]
 	values := append([]string(nil), args[1:]...)
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	n := listsRPush(listName, values)
-	flushBLPOPAfterPush() // wake up the blocked clients
+	flushBLPOPAfterPush()
 	return resp.WriteInteger(int64(n)), nil
 }
 
+// LPUSH inserts all the specified values at the head of the list stored at key.
+func LPUSH(args []string) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
+	}
+	listName := args[0]
+	vals := append([]string(nil), args[1:]...)
+
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	n := listsLPush(listName, vals)
+	flushBLPOPAfterPush()
+	return resp.WriteInteger(int64(n)), nil
+}
+
+// LRANGE returns the specified elements of the list stored at key.
 func LRANGE(args []string) ([]byte, error) {
 	if len(args) < 3 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LRANGE'")
 	}
-
 	listName := args[0]
 	start, err := strconv.Atoi(args[1])
 	if err != nil {
@@ -125,8 +128,8 @@ func LRANGE(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid argument for 'LRANGE'")
 	}
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	sub := lrangeSlice(lists[listName], start, end)
 	elements := make([]resp.RESP, 0, len(sub))
@@ -136,33 +139,15 @@ func LRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(elements), nil
 }
 
-// Insert all the specified values at the end of the list stored at key.
-// If key does not exist, it is created as empty list before performing the push operations.
-func LPUSH(args []string) ([]byte, error) {
-	if len(args) < 2 {
-		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
-	}
-
-	listName := args[0]
-	vals := append([]string(nil), args[1:]...) // values to push to the list
-
-	listMu.Lock()
-	defer listMu.Unlock()
-
-	n := listsLPush(listName, vals)
-	flushBLPOPAfterPush()
-	return resp.WriteInteger(int64(n)), nil
-}
-
-// Return the length of the list stored at key.
+// LLEN returns the length of the list stored at key.
 func LLEN(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LLEN'")
 	}
-
 	listName := args[0]
-	listMu.Lock()
-	defer listMu.Unlock()
+
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	if _, holdsKey := cache[listName]; holdsKey {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -170,46 +155,34 @@ func LLEN(args []string) ([]byte, error) {
 	return resp.WriteInteger(int64(listsLen(listName))), nil
 }
 
-// Remove and return the first element of the list stored at key.
+// LPOP removes and returns the first element(s) of the list stored at key.
 func LPOP(args []string) ([]byte, error) {
-	if len(args) < 1 {
+	if len(args) < 1 || len(args) > 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
 	}
-	if len(args) > 2 {
-		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
-	}
-
 	key := args[0]
 	if _, inCache := cache[key]; inCache {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
 
-	listMu.Lock()
-	defer listMu.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	if listsLen(key) == 0 {
 		return []byte("$-1" + resp.CRLF), nil
 	}
-
 	if len(args) == 1 {
 		popped := getPoppedElements(key, 1)
 		return resp.WriteBulkString(popped[0]), nil
 	}
-
 	count, err := strconv.Atoi(args[1])
 	if err != nil || count <= 0 {
 		return nil, fmt.Errorf("invalid argument for 'LPOP'")
 	}
-
 	popped := getPoppedElements(key, count)
 	out := make([]resp.RESP, 0, len(popped))
 	for _, s := range popped {
 		out = append(out, resp.RESP{Type: resp.BulkString, Str: s})
 	}
 	return resp.WriteArray(out), nil
-}
-
-func deleteKeyAfterDuration(key string, duration int64) {
-	time.Sleep(time.Duration(duration) * time.Millisecond)
-	delete(cache, key)
 }
