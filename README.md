@@ -1,63 +1,66 @@
-The current implementation includes a RESP2 parser, command dispatching, and a
-TCP server that can handle basic Redis-style commands.
+# Redis Go Implementation
 
-# Current implementation
+A lightweight Redis-compatible server implemented in Go, targeting RESP2 protocol compatibility.
 
-Main pieces:
+## Current Implementation
 
-- [`cmd/redis-server/main.go`](cmd/redis-server/main.go): program entry; TCP listen and accept loop
-- [`internal/server/handler.go`](internal/server/handler.go): per-connection RESP read loop and error/reply writes
-- [`internal/redis/dispatch.go`](internal/redis/dispatch.go): `DispatchCommand`, string store (`SET` / `GET`), and command handlers
-- [`internal/redis/list.go`](internal/redis/list.go): list type, in-memory list map, LRANGE indexing, push/pop primitives
-- [`internal/redis/dispatch_test.go`](internal/redis/dispatch_test.go): integration tests for dispatch
-- [`internal/resp/resp.go`](internal/resp/resp.go): RESP2 parser, encoders, command decoding
-- [`internal/resp/resp_test.go`](internal/resp/resp_test.go): parser and encoder unit tests
+The project is organized into several internal packages to separate concerns:
 
-Supported RESP2 types:
+- [**`cmd/redis-server/main.go`**](cmd/redis-server/main.go): Program entry point; sets up the TCP listener and accept loop.
+- [**`internal/server/handler.go`**](internal/server/handler.go): Manages the lifecycle of TCP connections.
+- [**`internal/client/`**](internal/client/): Manages per-connection state, including transaction queues (`MULTI`, `EXEC`, `DISCARD`).
+- [**`internal/commands/`**](internal/commands/): Contains the core logic for all supported Redis commands:
+    - `string.go`: String operations (`SET`, `GET`, `INCR`).
+    - `list.go` & `list_blocking.go`: List operations (`LPUSH`, `RPUSH`, `LPOP`, `BLPOP`, etc.).
+    - `stream.go` & `xread.go`: Stream operations (`XADD`, `XRANGE`, `XREAD`).
+    - `store.go`: Central in-memory data store with thread-safe access.
+- [**`internal/resp/`**](internal/resp/): Robust RESP2 parser and encoder.
+- [**`internal/redis/`**](internal/redis/): A compatibility shim and test suite for the server logic.
 
-- Simple strings: `+OK\r\n`
-- Errors: `-ERR bad\r\n`
-- Integers: `:42\r\n`
-- Bulk strings: `$5\r\nhello\r\n`
-- Arrays: `*2\r\n$4\r\nECHO\r\n$2\r\nhi\r\n`
+## Supported Commands
 
-Supported commands include (non-exhaustive): `PING`, `ECHO`, `SET`, `GET`,
-`RPUSH`, `LPUSH`, `LRANGE`, `LLEN`, `LPOP`, `BLPOP` (synchronous subset), and related list operations.
+The server currently supports a wide range of Redis commands:
 
-# Run locally
+- **General**: `PING`, `ECHO`, `TYPE`
+- **Strings**: `SET` (with `PX` expiry), `GET`, `INCR`
+- **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `LLEN`, `LRANGE`, `BLPOP`
+- **Streams**: `XADD`, `XRANGE`, `XREAD` (with `BLOCK` and `COUNT` support)
+- **Transactions**: `MULTI`, `EXEC`, `DISCARD`
 
-Ensure you have Go 1.26+ installed (`go version`), then start the server:
+## Features
+
+- **Stateful Sessions**: Each connection has its own client state, enabling atomic transactions.
+- **Blocking Operations**: Support for blocking commands like `BLPOP` and `XREAD BLOCK`.
+- **RESP2 Protocol**: Full support for Simple Strings, Errors, Integers, Bulk Strings, and Arrays.
+- **Thread Safety**: Global mutex-protected store ensures data integrity across concurrent connections.
+
+## Getting Started
+
+### Run locally
+
+Ensure you have Go 1.26+ installed, then start the server:
 
 ```sh
 go run ./cmd/redis-server
 ```
 
-Or build a binary:
+The server listens on `0.0.0.0:6379`. You can interact with it using `redis-cli`:
 
 ```sh
-go build -o redis-server ./cmd/redis-server
-./redis-server
+redis-cli SET foo bar
+redis-cli GET foo
 ```
 
-The server listens on `0.0.0.0:6379`.
+### Run tests
 
-You can test it with `redis-cli`:
-
-```sh
-redis-cli ping
-redis-cli echo "hello"
-```
-
-# Run tests
+The project includes a comprehensive test suite covering protocol parsing, command logic, and transaction isolation.
 
 ```sh
 go test ./...
 ```
 
-# Notes
+## Technical Notes
 
-- The parser uses `bufio.Reader` so it can handle partial reads and pipelined
-  RESP messages correctly.
-- Arrays are parsed recursively because each array element is itself a full RESP
-  value.
-- This project targets RESP2, which aligns with Codecrafters Redis stages.
+- **Buffered I/O**: The parser uses `bufio.Reader` to handle network packets efficiently and support pipelining.
+- **Recursive Parsing**: RESP Arrays are parsed recursively, allowing for complex nested structures.
+- **Atomic Transactions**: Commands queued within a `MULTI` block are executed sequentially when `EXEC` is called, with results returned as a single array.
