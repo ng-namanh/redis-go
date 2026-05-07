@@ -141,3 +141,18 @@ func NextPartialSeqStreamID(ms uint64, lastEntryID string) (finalID string, err 
 	}
 	return FormatStreamID(ms, last.Seq+1), nil
 }
+
+func parseXREADLastSeenID(token string) (StreamId, bool, error) {
+	if strings.Contains(token, "-") {
+		id, ok := ParseStreamID(token)
+		return id, ok, nil
+	}
+	if token == "" {
+		return StreamId{}, false, nil
+	}
+	ms, err := strconv.ParseUint(token, 10, 64)
+	if err != nil {
+		return StreamId{}, false, nil
+	}
+	return StreamId{Ms: ms, Seq: 0}, true, nil
+}
