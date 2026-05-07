@@ -1,5 +1,3 @@
-// Package client manages per-connection state (transaction queue, etc.)
-// and routes incoming RESP commands to their implementations in the commands package.
 package client
 
 import (
@@ -9,13 +7,11 @@ import (
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
-// Client holds the per-connection state for a single Redis client session.
 type Client struct {
 	inMulti        bool
 	queuedCommands []QueuedCommand
 }
 
-// NewClient returns a new, ready-to-use Client.
 func NewClient() *Client {
 	return &Client{}
 }
@@ -45,7 +41,6 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 	case "DISCARD":
 		return c.discard(args)
 
-	// General commands (stateless — delegate to commands package).
 	case "PING":
 		return commands.PING(), nil
 	case "ECHO":
