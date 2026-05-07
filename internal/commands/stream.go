@@ -27,8 +27,13 @@ type StreamEntry struct {
 	fields []string // flat k,v,k,v,...
 }
 
-// XADD appends an entry to a stream key and returns the final entry ID.
 func XADD(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return xaddUnlocked(args)
+}
+
+func xaddUnlocked(args []string) ([]byte, error) {
 	if len(args) < 4 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XADD'")
 	}
@@ -39,9 +44,6 @@ func XADD(args []string) ([]byte, error) {
 	streamKey := args[0]
 	idStr := args[1]
 	fields := args[2:]
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	s := streams[streamKey]
 	lastID := LastStreamEntryID(s)
@@ -90,8 +92,13 @@ func XADD(args []string) ([]byte, error) {
 	return resp.WriteBulkString(finalID), nil
 }
 
-// XRANGE returns stream entries in the inclusive [start, end] ID range.
 func XRANGE(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return xrangeUnlocked(args)
+}
+
+func xrangeUnlocked(args []string) ([]byte, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("wrong number of arguments for 'XRANGE'")
 	}
@@ -104,9 +111,6 @@ func XRANGE(args []string) ([]byte, error) {
 	if !StreamIdGte(end, start) {
 		return resp.WriteArray(nil), nil
 	}
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	if _, ok := lists[key]; ok {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -146,15 +150,17 @@ func XRANGE(args []string) ([]byte, error) {
 	return resp.WriteArray(out), nil
 }
 
-// TYPE returns the type of the value stored at key.
 func TYPE(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return typeUnlocked(args)
+}
+
+func typeUnlocked(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'TYPE'")
 	}
 	key := args[0]
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	if _, ok := streams[key]; ok {
 		return resp.WriteSimpleString("stream"), nil

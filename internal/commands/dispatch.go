@@ -38,3 +38,40 @@ func HandleCommand(cmd string, args []string) ([]byte, error) {
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
 }
+
+// HandleCommandUnlocked executes a command without acquiring the global lock.
+// This is used for atomic transactions where the caller already holds the lock.
+func HandleCommandUnlocked(cmd string, args []string) ([]byte, error) {
+	switch cmd {
+	case "PING":
+		return PING(), nil
+	case "ECHO":
+		return ECHO(args)
+	case "SET":
+		return setUnlocked(args)
+	case "GET":
+		return getUnlocked(args)
+	case "INCR":
+		return incrUnlocked(args)
+	case "RPUSH":
+		return rpushUnlocked(args)
+	case "LPUSH":
+		return lpushUnlocked(args)
+	case "LRANGE":
+		return lrangeUnlocked(args)
+	case "LLEN":
+		return llenUnlocked(args)
+	case "LPOP":
+		return lpopUnlocked(args)
+	case "TYPE":
+		return typeUnlocked(args)
+	case "XADD":
+		return xaddUnlocked(args)
+	case "XRANGE":
+		return xrangeUnlocked(args)
+	default:
+		// Commands that are still blocking or not yet refactored will fallback to HandleCommand.
+		// Note: This may cause deadlocks if those commands attempt to Lock().
+		return HandleCommand(cmd, args)
+	}
+}

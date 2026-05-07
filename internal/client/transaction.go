@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/ng-namanh/redis-go/internal/commands"
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
@@ -45,9 +46,14 @@ func (c *Client) exec(_ []string) ([]byte, error) {
 		return resp.WriteArray(nil), nil
 	}
 
+	// Acquire the global lock for the entire duration of EXEC to ensure atomicity.
+	commands.Lock()
+	defer commands.Unlock()
+
 	results := make([]resp.RESP, 0, len(cmds))
 	for _, q := range cmds {
-		out, err := c.HandleCommand(q.Name, q.Args)
+		// Use the "Unlocked" version of the dispatcher to avoid re-locking the same mutex.
+		out, err := commands.HandleCommandUnlocked(q.Name, q.Args)
 		if err != nil {
 			results = append(results, resp.RESP{Type: resp.Error, Err: "ERR " + err.Error()})
 			continue

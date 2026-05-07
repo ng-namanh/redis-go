@@ -20,6 +20,12 @@ func ECHO(args []string) ([]byte, error) {
 }
 
 func SET(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return setUnlocked(args)
+}
+
+func setUnlocked(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'SET'")
 	}
@@ -27,9 +33,7 @@ func SET(args []string) ([]byte, error) {
 	key := args[0]
 	value := args[1]
 
-	mutex.Lock()
 	cache[key] = value
-	mutex.Unlock()
 
 	if len(args) > 2 && args[2] == "PX" {
 		duration, err := strconv.ParseInt(args[3], 10, 64)
@@ -42,13 +46,16 @@ func SET(args []string) ([]byte, error) {
 }
 
 func GET(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return getUnlocked(args)
+}
+
+func getUnlocked(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'GET'")
 	}
 	key := args[0]
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	raw, ok := cache[key]
 	if !ok {
@@ -62,14 +69,17 @@ func GET(args []string) ([]byte, error) {
 }
 
 func INCR(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return incrUnlocked(args)
+}
+
+func incrUnlocked(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'INCR'")
 	}
 
 	key := args[0]
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	val, ok := cache[key]
 	if !ok {

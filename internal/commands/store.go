@@ -6,3 +6,11 @@ var mutex sync.Mutex
 var cache = map[string]any{}
 var lists map[string]list = make(map[string]list)
 var streams = make(map[string]*Stream)
+
+func Lock() {
+	mutex.Lock()
+}
+
+func Unlock() {
+	mutex.Unlock()
+}

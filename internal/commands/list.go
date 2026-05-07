@@ -49,7 +49,6 @@ func getPoppedElements(key string, n int) []string {
 	return popped
 }
 
-// lrangeSlice returns Redis LRANGE-inclusive elements for start/stop (negative indices OK).
 func lrangeSlice(l list, start, stop int) list {
 	ln := len(l)
 	if ln == 0 {
@@ -83,14 +82,17 @@ func lrangeSlice(l list, start, stop int) list {
 
 // RPUSH inserts all the specified values at the tail of the list stored at key.
 func RPUSH(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return rpushUnlocked(args)
+}
+
+func rpushUnlocked(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'RPUSH'")
 	}
 	listName := args[0]
 	values := append([]string(nil), args[1:]...)
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	n := listsRPush(listName, values)
 	flushBLPOPAfterPush()
@@ -99,14 +101,17 @@ func RPUSH(args []string) ([]byte, error) {
 
 // LPUSH inserts all the specified values at the head of the list stored at key.
 func LPUSH(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return lpushUnlocked(args)
+}
+
+func lpushUnlocked(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPUSH'")
 	}
 	listName := args[0]
 	vals := append([]string(nil), args[1:]...)
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	n := listsLPush(listName, vals)
 	flushBLPOPAfterPush()
@@ -115,6 +120,12 @@ func LPUSH(args []string) ([]byte, error) {
 
 // LRANGE returns the specified elements of the list stored at key.
 func LRANGE(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return lrangeUnlocked(args)
+}
+
+func lrangeUnlocked(args []string) ([]byte, error) {
 	if len(args) < 3 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LRANGE'")
 	}
@@ -128,9 +139,6 @@ func LRANGE(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid argument for 'LRANGE'")
 	}
 
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	sub := lrangeSlice(lists[listName], start, end)
 	elements := make([]resp.RESP, 0, len(sub))
 	for _, s := range sub {
@@ -141,13 +149,16 @@ func LRANGE(args []string) ([]byte, error) {
 
 // LLEN returns the length of the list stored at key.
 func LLEN(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return llenUnlocked(args)
+}
+
+func llenUnlocked(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LLEN'")
 	}
 	listName := args[0]
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	if _, holdsKey := cache[listName]; holdsKey {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -157,6 +168,12 @@ func LLEN(args []string) ([]byte, error) {
 
 // LPOP removes and returns the first element(s) of the list stored at key.
 func LPOP(args []string) ([]byte, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return lpopUnlocked(args)
+}
+
+func lpopUnlocked(args []string) ([]byte, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'LPOP'")
 	}
@@ -164,9 +181,6 @@ func LPOP(args []string) ([]byte, error) {
 	if _, inCache := cache[key]; inCache {
 		return nil, fmt.Errorf("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
-
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	if listsLen(key) == 0 {
 		return []byte("$-1" + resp.CRLF), nil
