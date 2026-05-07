@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 
-	"github.com/ng-namanh/redis-go/internal/redis"
 	"github.com/ng-namanh/redis-go/internal/server"
 )
 
@@ -25,6 +24,6 @@ func main() {
 			os.Exit(1)
 		}
 
-		go server.Handle(conn, redis.DispatchCommand)
+		go server.Handle(conn)
 	}
 }

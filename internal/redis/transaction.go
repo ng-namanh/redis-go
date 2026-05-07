@@ -31,3 +31,6 @@ func INCR(args []string) ([]byte, error) {
 	cache[key] = s
 	return resp.WriteInteger(int64(s)), nil
 }
+
+
+

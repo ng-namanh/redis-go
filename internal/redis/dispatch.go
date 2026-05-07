@@ -9,6 +9,7 @@ import (
 
 var cache = map[string]any{}
 
+
 func DispatchCommand(v resp.RESP) ([]byte, error) {
 	cmd, args, err := resp.ParseCommand(v)
 	if err != nil {
@@ -50,6 +51,7 @@ func DispatchCommand(v resp.RESP) ([]byte, error) {
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
 }
+
 
 func PING() []byte {
 	return resp.WriteSimpleString("PONG")

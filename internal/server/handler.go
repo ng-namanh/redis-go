@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 
+	"github.com/ng-namanh/redis-go/internal/client"
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
-func Handle(conn net.Conn, dispatch func(resp.RESP) ([]byte, error)) {
+func Handle(conn net.Conn) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
+	c := client.NewClient()
 	for {
 		v, err := resp.ReadValue(r)
 		if err != nil {
@@ -23,7 +25,7 @@ func Handle(conn net.Conn, dispatch func(resp.RESP) ([]byte, error)) {
 			return
 		}
 
-		out, err := dispatch(v)
+		out, err := c.DispatchCommand(v)
 		if err != nil {
 			_, _ = conn.Write(resp.WriteError("ERR " + err.Error()))
 			return
@@ -33,3 +35,5 @@ func Handle(conn net.Conn, dispatch func(resp.RESP) ([]byte, error)) {
 		}
 	}
 }
+
+
