@@ -8,12 +8,10 @@ import (
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
-// PING returns PONG.
 func PING() []byte {
 	return resp.WriteSimpleString("PONG")
 }
 
-// ECHO returns the first argument as a bulk string.
 func ECHO(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'ECHO'")
@@ -21,7 +19,6 @@ func ECHO(args []string) ([]byte, error) {
 	return resp.WriteBulkString(args[0]), nil
 }
 
-// SET stores a string value, with optional PX expiry in milliseconds.
 func SET(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("wrong number of arguments for 'SET'")
@@ -44,7 +41,6 @@ func SET(args []string) ([]byte, error) {
 	return resp.WriteSimpleString("OK"), nil
 }
 
-// GET returns the string value stored at key.
 func GET(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'GET'")
@@ -65,7 +61,6 @@ func GET(args []string) ([]byte, error) {
 	return resp.WriteBulkString(s), nil
 }
 
-// INCR increments the integer stored at key by one.
 func INCR(args []string) ([]byte, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("wrong number of arguments for 'INCR'")

@@ -20,8 +20,6 @@ func NewClient() *Client {
 	return &Client{}
 }
 
-// DispatchCommand parses v and either queues it (when inside a MULTI block) or
-// executes it immediately.
 func (c *Client) DispatchCommand(v resp.RESP) ([]byte, error) {
 	cmd, args, err := resp.ParseCommand(v)
 	if err != nil {
@@ -29,7 +27,6 @@ func (c *Client) DispatchCommand(v resp.RESP) ([]byte, error) {
 	}
 
 	if c.inMulti && cmd != "EXEC" && cmd != "DISCARD" && cmd != "MULTI" {
-		// add command to command queue
 		c.queuedCommands = append(c.queuedCommands, QueuedCommand{Name: cmd, Args: args})
 		return resp.WriteSimpleString("QUEUED"), nil
 	}
@@ -37,11 +34,10 @@ func (c *Client) DispatchCommand(v resp.RESP) ([]byte, error) {
 	return c.HandleCommand(cmd, args)
 }
 
-// HandleCommand executes a single command by name, bypassing the queuing logic.
-// Used both by DispatchCommand and internally by EXEC.
 func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 	switch cmd {
-	// Transaction commands (need client state).
+
+	// Transactions
 	case "MULTI":
 		return c.multi(args)
 	case "EXEC":

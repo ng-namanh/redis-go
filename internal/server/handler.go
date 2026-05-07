@@ -35,5 +35,3 @@ func Handle(conn net.Conn) {
 		}
 	}
 }
-
-

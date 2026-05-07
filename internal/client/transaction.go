@@ -14,7 +14,6 @@ type QueuedCommand struct {
 	Args []string
 }
 
-// multi starts a new transaction block.
 func (c *Client) multi(_ []string) ([]byte, error) {
 	if c.inMulti {
 		return nil, fmt.Errorf("MULTI calls can not be nested")
@@ -24,7 +23,6 @@ func (c *Client) multi(_ []string) ([]byte, error) {
 	return resp.WriteSimpleString("OK"), nil
 }
 
-// discard aborts the current transaction block.
 func (c *Client) discard(_ []string) ([]byte, error) {
 	if !c.inMulti {
 		return nil, fmt.Errorf("DISCARD without MULTI")
@@ -34,7 +32,6 @@ func (c *Client) discard(_ []string) ([]byte, error) {
 	return resp.WriteSimpleString("OK"), nil
 }
 
-// exec executes all queued commands and returns their results as a RESP array.
 func (c *Client) exec(_ []string) ([]byte, error) {
 	if !c.inMulti {
 		return nil, fmt.Errorf("EXEC without MULTI")
