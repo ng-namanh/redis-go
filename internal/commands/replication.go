@@ -19,6 +19,8 @@ func INFO(args []string) ([]byte, error) {
 	var sb strings.Builder
 	if section == "" || section == "replication" {
 		sb.WriteString(fmt.Sprintf("role:%s\r\n", Role))
+		sb.WriteString(fmt.Sprintf("master_replid:%s\r\n", MasterReplid))
+		sb.WriteString(fmt.Sprintf("master_repl_offset:%d\r\n", MasterReplOffset))
 	}
 
 	return resp.WriteBulkString(sb.String()), nil

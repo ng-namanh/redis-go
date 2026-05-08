@@ -15,11 +15,15 @@ func TestINFO(t *testing.T) {
 		t.Fatalf("INFO failed: %v", err)
 	}
 
-	// Response should be a bulk string containing role:master
-	want := "role:master\r\n"
 	got := mustReadBulkString(t, res)
-	if !bytes.Contains([]byte(got), []byte(want)) {
+	if !bytes.Contains([]byte(got), []byte("role:master\r\n")) {
 		t.Fatalf("expected role:master, got %q", got)
+	}
+	if !bytes.Contains([]byte(got), []byte("master_replid:")) {
+		t.Fatalf("expected master_replid, got %q", got)
+	}
+	if !bytes.Contains([]byte(got), []byte("master_repl_offset:0\r\n")) {
+		t.Fatalf("expected master_repl_offset:0, got %q", got)
 	}
 }
 
@@ -32,9 +36,11 @@ func TestINFOSlave(t *testing.T) {
 		t.Fatalf("INFO failed: %v", err)
 	}
 
-	want := "role:slave\r\n"
 	got := mustReadBulkString(t, res)
-	if !bytes.Contains([]byte(got), []byte(want)) {
+	if !bytes.Contains([]byte(got), []byte("role:slave\r\n")) {
 		t.Fatalf("expected role:slave, got %q", got)
+	}
+	if !bytes.Contains([]byte(got), []byte("master_replid:")) {
+		t.Fatalf("expected master_replid, got %q", got)
 	}
 }

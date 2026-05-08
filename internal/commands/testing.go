@@ -8,4 +8,6 @@ func ResetForTesting() {
 	streams = make(map[string]*Stream)
 	keyVersions = make(map[string]uint64)
 	blpopWaiters = nil
+	MasterReplOffset = 0
+	Role = "master"
 }
