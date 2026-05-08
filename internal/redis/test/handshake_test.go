@@ -2,6 +2,8 @@ package redis_test
 
 import (
 	"bufio"
+	"encoding/base64"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -52,7 +54,7 @@ func TestReplicaHandshake(t *testing.T) {
 			{"PSYNC", "+FULLRESYNC mockid 0\r\n"},
 		}
 
-		for _, stage := range stages {
+		for i, stage := range stages {
 			v, err := resp.ReadValue(r)
 			if err != nil {
 				t.Errorf("mock master: error reading: %v", err)
@@ -64,6 +66,14 @@ func TestReplicaHandshake(t *testing.T) {
 				return
 			}
 			conn.Write([]byte(stage.response))
+
+			// After Stage 4 (PSYNC), we also send the RDB file
+			if i == 3 {
+				rdb := "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHMxwP6FY3RpbWXCbYi8Zf6IdXNlZC1tZW3CsMQQAP6IYW9mLWJhc2XAAf8Qq6I7c7QUvA=="
+				data, _ := base64.StdEncoding.DecodeString(rdb)
+				conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(data))))
+				conn.Write(data)
+			}
 		}
 	}()
 

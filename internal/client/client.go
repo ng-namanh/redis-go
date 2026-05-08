@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/ng-namanh/redis-go/internal/commands"
 	"github.com/ng-namanh/redis-go/internal/resp"
@@ -11,11 +12,13 @@ type Client struct {
 	inMulti        bool
 	queuedCommands []QueuedCommand
 	watchedKeys    map[string]uint64 // key -> version when WATCHed
+	Conn           net.Conn
 }
 
-func NewClient() *Client {
+func NewClient(conn net.Conn) *Client {
 	return &Client{
 		watchedKeys: make(map[string]uint64),
+		Conn:        conn,
 	}
 }
 
@@ -87,9 +90,17 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 	case "REPLCONF":
 		return commands.REPLCONF(args)
 	case "PSYNC":
-		return commands.PSYNC(args)
+		return c.psync(args)
 
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
+}
+
+func (c *Client) psync(args []string) ([]byte, error) {
+	res, err := commands.PSYNC(args)
+	if err == nil {
+		commands.AddReplica(c.Conn)
+	}
+	return res, err
 }

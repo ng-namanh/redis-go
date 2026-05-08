@@ -97,6 +97,7 @@ func rpushUnlocked(args []string) ([]byte, error) {
 	n := listsRPush(listName, values)
 	Touch(listName)
 	flushBLPOPAfterPush()
+	Propagate("RPUSH", args)
 	return resp.WriteInteger(int64(n)), nil
 }
 
@@ -117,6 +118,7 @@ func lpushUnlocked(args []string) ([]byte, error) {
 	n := listsLPush(listName, vals)
 	Touch(listName)
 	flushBLPOPAfterPush()
+	Propagate("LPUSH", args)
 	return resp.WriteInteger(int64(n)), nil
 }
 
@@ -189,6 +191,8 @@ func lpopUnlocked(args []string) ([]byte, error) {
 	}
 	if len(args) == 1 {
 		popped := getPoppedElements(key, 1)
+		Touch(key)
+		Propagate("LPOP", args)
 		return resp.WriteBulkString(popped[0]), nil
 	}
 	count, err := strconv.Atoi(args[1])
@@ -197,6 +201,7 @@ func lpopUnlocked(args []string) ([]byte, error) {
 	}
 	popped := getPoppedElements(key, count)
 	Touch(key)
+	Propagate("LPOP", args)
 	out := make([]resp.RESP, 0, len(popped))
 	for _, s := range popped {
 		out = append(out, resp.RESP{Type: resp.BulkString, Str: s})

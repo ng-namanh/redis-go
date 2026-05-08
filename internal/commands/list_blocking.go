@@ -38,6 +38,7 @@ func blpopTryPop(keys []string) ([]byte, bool) {
 		popped := getPoppedElements(k, 1)
 		if len(popped) == 1 {
 			Touch(k)
+			Propagate("LPOP", []string{k})
 			return encodeBLPOPReply(k, popped[0]), true
 		}
 	}
@@ -57,6 +58,7 @@ func tryServeOneBLPOPWaiter() bool {
 			continue
 		}
 		Touch(k)
+		Propagate("LPOP", []string{k})
 		encoded := encodeBLPOPReply(k, popped[0])
 		blpopWaiters = append(blpopWaiters[:i], blpopWaiters[i+1:]...)
 		select {

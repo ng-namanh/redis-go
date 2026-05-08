@@ -90,6 +90,7 @@ func xaddUnlocked(args []string) ([]byte, error) {
 		fields: append([]string(nil), fields...),
 	})
 	Touch(streamKey)
+	Propagate("XADD", append([]string{streamKey, finalID}, fields...))
 	return resp.WriteBulkString(finalID), nil
 }
 

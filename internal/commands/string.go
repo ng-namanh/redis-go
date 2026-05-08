@@ -43,6 +43,8 @@ func setUnlocked(args []string) ([]byte, error) {
 		}
 		go deleteKeyAfterDuration(key, duration)
 	}
+
+	Propagate("SET", args)
 	return resp.WriteSimpleString("OK"), nil
 }
 
@@ -95,6 +97,7 @@ func incrUnlocked(args []string) ([]byte, error) {
 	s++
 	cache[key] = s
 	Touch(key)
+	Propagate("INCR", args)
 	return resp.WriteInteger(int64(s)), nil
 }
 

@@ -14,7 +14,7 @@ import (
 func Handle(conn net.Conn) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
-	c := client.NewClient()
+	c := client.NewClient(conn)
 	for {
 		v, err := resp.ReadValue(r)
 		if err != nil {

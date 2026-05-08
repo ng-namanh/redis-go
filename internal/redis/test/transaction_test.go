@@ -12,7 +12,7 @@ import (
 func TestTransaction(t *testing.T) {
 	t.Run("basic MULTI/EXEC", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		// Start transaction
 		res, err := c.DispatchCommand(req("MULTI"))
@@ -48,7 +48,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("DISCARD works", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		c.DispatchCommand(req("MULTI"))
 		c.DispatchCommand(req("SET", "foo", "bar"))
@@ -67,7 +67,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("nested MULTI errors", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		c.DispatchCommand(req("MULTI"))
 		_, err := c.DispatchCommand(req("MULTI"))
@@ -78,7 +78,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("EXEC without MULTI errors", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		_, err := c.DispatchCommand(req("EXEC"))
 		if err == nil {
@@ -88,7 +88,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("DISCARD without MULTI errors", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		_, err := c.DispatchCommand(req("DISCARD"))
 		if err == nil {
@@ -98,7 +98,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("empty EXEC returns empty array", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		c.DispatchCommand(req("MULTI"))
 		res, err := c.DispatchCommand(req("EXEC"))
@@ -112,7 +112,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("command failure inside EXEC", func(t *testing.T) {
 		redis.ResetForTesting()
-		c := client.NewClient()
+		c := client.NewClient(nil)
 
 		c.DispatchCommand(req("MULTI"))
 		// SET a string
@@ -140,8 +140,8 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("independent transactions for multiple clients", func(t *testing.T) {
 		redis.ResetForTesting()
-		c1 := client.NewClient()
-		c2 := client.NewClient()
+		c1 := client.NewClient(nil)
+		c2 := client.NewClient(nil)
 
 		c1.DispatchCommand(req("MULTI"))
 		c1.DispatchCommand(req("SET", "a", "1"))
@@ -170,7 +170,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("WATCH aborted by other client", func(t *testing.T) {
 		redis.ResetForTesting()
-		c1 := client.NewClient()
+		c1 := client.NewClient(nil)
 
 		// Client 1 watches 'foo'
 		c1.DispatchCommand(req("WATCH", "foo"))
@@ -195,7 +195,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("WATCH succeeds if no modification", func(t *testing.T) {
 		redis.ResetForTesting()
-		c1 := client.NewClient()
+		c1 := client.NewClient(nil)
 
 		c1.DispatchCommand(req("WATCH", "foo"))
 		c1.DispatchCommand(req("MULTI"))
@@ -212,7 +212,7 @@ func TestTransaction(t *testing.T) {
 
 	t.Run("UNWATCH clears watches", func(t *testing.T) {
 		redis.ResetForTesting()
-		c1 := client.NewClient()
+		c1 := client.NewClient(nil)
 
 		c1.DispatchCommand(req("WATCH", "foo"))
 		redis.DispatchCommand(req("SET", "foo", "bar"))

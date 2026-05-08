@@ -2,8 +2,11 @@ package commands
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/ng-namanh/redis-go/internal/resp"
@@ -32,22 +35,30 @@ func REPLCONF(args []string) ([]byte, error) {
 	return resp.WriteSimpleString("OK"), nil
 }
 
-func PSYNC(args []string) ([]byte, error) {
-	return resp.WriteSimpleString(fmt.Sprintf("FULLRESYNC %s %d", MasterReplid, MasterReplOffset)), nil
-}
+const emptyRDBBase64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHMxwP6FY3RpbWXCbYi8Zf6IdXNlZC1tZW3CsMQQAP6IYW9mLWJhc2XAAf8Qq6I7c7QUvA=="
 
-var dialer func(network, address string) (net.Conn, error) = net.Dial
+func PSYNC(args []string) ([]byte, error) {
+	fullResync := resp.WriteSimpleString(fmt.Sprintf("FULLRESYNC %s %d", MasterReplid, MasterReplOffset))
+
+	rdbData, _ := base64.StdEncoding.DecodeString(emptyRDBBase64)
+	rdbHeader := []byte(fmt.Sprintf("$%d\r\n", len(rdbData)))
+
+	res := make([]byte, 0, len(fullResync)+len(rdbHeader)+len(rdbData))
+	res = append(res, fullResync...)
+	res = append(res, rdbHeader...)
+	res = append(res, rdbData...)
+
+	return res, nil
+}
 
 func StartReplicaHandshake() {
 	addr := net.JoinHostPort(MasterHost, MasterPort)
-	conn, err := dialer("tcp", addr)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		fmt.Printf("Failed to connect to master at %s: %v\n", addr, err)
 		return
 	}
-	// Note: In a real implementation, we would keep this connection open for replication.
-	// For now, we follow the handshake stages.
-	defer conn.Close()
+	// Note: We keep this connection open to receive propagated commands.
 
 	reader := bufio.NewReader(conn)
 
@@ -70,9 +81,60 @@ func StartReplicaHandshake() {
 		fmt.Printf("Handshake Stage 4 (PSYNC) failed: %v\n", err)
 		return
 	}
-	// We don't necessarily need to check the response of PSYNC for this stage,
-	// but we should read it to clear the buffer.
-	_, _ = resp.ReadValue(reader)
+
+	if _, err := resp.ReadValue(reader); err != nil {
+		fmt.Printf("Handshake Stage 4 (PSYNC) FULLRESYNC failed: %v\n", err)
+		return
+	}
+
+	b, err := reader.ReadByte()
+	if err != nil || b != '$' {
+		fmt.Printf("Handshake Stage 5 (RDB transfer) failed to read $: %v\n", err)
+		return
+	}
+
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Handshake Stage 5 (RDB transfer) failed to read length: %v\n", err)
+		return
+	}
+	length, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil {
+		fmt.Printf("Handshake Stage 5 (RDB transfer) invalid length: %v\n", err)
+		return
+	}
+
+	rdbData := make([]byte, length)
+	if _, err := io.ReadFull(reader, rdbData); err != nil {
+		fmt.Printf("Handshake Stage 5 (RDB transfer) failed to read data: %v\n", err)
+		return
+	}
+
+	go processMasterCommands(conn, reader)
+}
+
+func processMasterCommands(conn net.Conn, r *bufio.Reader) {
+	defer conn.Close()
+	for {
+		v, err := resp.ReadValue(r)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Printf("Replica: error reading master command: %v\n", err)
+			}
+			return
+		}
+
+		cmd, args, err := resp.ParseCommand(v)
+		if err != nil {
+			fmt.Printf("Replica: error parsing master command: %v\n", err)
+			continue
+		}
+
+		_, err = HandleCommand(strings.ToUpper(cmd), args)
+		if err != nil {
+			fmt.Printf("Replica: error executing master command %s: %v\n", cmd, err)
+		}
+	}
 }
 
 func sendCommand(conn net.Conn, args []string) error {
