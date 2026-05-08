@@ -1,19 +1,34 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
+	"github.com/ng-namanh/redis-go/internal/commands"
 	"github.com/ng-namanh/redis-go/internal/server"
 )
 
 func main() {
-	fmt.Println("Logs from your program will appear here!")
+	port := flag.Int("port", 6379, "The port on which the server will listen for incoming connections.")
+	replicaof := flag.String("replicaof", "", "Create a replica of another Redis server. Expects 'master_host master_port'.")
+	flag.Parse()
 
-	listener, err := net.Listen("tcp", "0.0.0.0:6379")
+	if *replicaof != "" {
+		parts := strings.Fields(*replicaof)
+		if len(parts) == 2 {
+			commands.Role = "slave"
+		}
+	}
+
+	addr := fmt.Sprintf("0.0.0.0:%d", *port)
+	fmt.Printf("Redis server started. Listening on %s\n", addr)
+
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
+		fmt.Printf("Failed to bind to port %d\n", *port)
 		os.Exit(1)
 	}
 

@@ -14,6 +14,8 @@ func HandleCommand(cmd string, args []string) ([]byte, error) {
 		return GET(args)
 	case "INCR":
 		return INCR(args)
+	case "INFO":
+		return INFO(args)
 	case "RPUSH":
 		return RPUSH(args)
 	case "LPUSH":
@@ -53,6 +55,8 @@ func HandleCommandUnlocked(cmd string, args []string) ([]byte, error) {
 		return getUnlocked(args)
 	case "INCR":
 		return incrUnlocked(args)
+	case "INFO":
+		return INFO(args)
 	case "RPUSH":
 		return rpushUnlocked(args)
 	case "LPUSH":

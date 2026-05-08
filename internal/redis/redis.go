@@ -14,6 +14,7 @@ var (
 	ParseStreamID = commands.ParseStreamID
 	XADD          = commands.XADD
 	TYPE          = commands.TYPE
+	SetRole       = func(role string) { commands.Role = role }
 )
 
 func DispatchCommand(v resp.RESP) ([]byte, error) {

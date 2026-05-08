@@ -6,8 +6,7 @@ var mutex sync.Mutex
 var cache = map[string]any{}
 var lists map[string]list = make(map[string]list)
 var streams = make(map[string]*Stream)
-
-// keyVersions tracks the "version" of each key. Incremented on every write.
+var Role = "master"
 var keyVersions = make(map[string]uint64)
 
 func Lock() {

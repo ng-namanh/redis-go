@@ -13,6 +13,7 @@ The project is organized into several internal packages to separate concerns:
     - `string.go`: String operations (`SET`, `GET`, `INCR`).
     - `list.go` & `list_blocking.go`: List operations (`LPUSH`, `RPUSH`, `LPOP`, `BLPOP`, etc.).
     - `stream.go` & `xread.go`: Stream operations (`XADD`, `XRANGE`, `XREAD`).
+    - `replication.go`: Replication status and info (`INFO`).
     - `store.go`: Central in-memory data store with thread-safe access.
 - [**`internal/resp/`**](internal/resp/): Robust RESP2 parser and encoder.
 - [**`internal/redis/`**](internal/redis/): A compatibility shim and test suite for the server logic.
@@ -21,11 +22,11 @@ The project is organized into several internal packages to separate concerns:
 
 The server currently supports a wide range of Redis commands:
 
-- **General**: `PING`, `ECHO`, `TYPE`
+- **General**: `PING`, `ECHO`, `TYPE`, `INFO`
 - **Strings**: `SET` (with `PX` expiry), `GET`, `INCR`
 - **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `LLEN`, `LRANGE`, `BLPOP`
 - **Streams**: `XADD`, `XRANGE`, `XREAD` (with `BLOCK` and `COUNT` support)
-- **Transactions**: `MULTI`, `EXEC`, `DISCARD`
+- **Transactions**: `MULTI`, `EXEC`, `DISCARD`, `WATCH`, `UNWATCH`
 
 ## Features
 
@@ -33,6 +34,7 @@ The server currently supports a wide range of Redis commands:
 - **Blocking Operations**: Support for blocking commands like `BLPOP` and `XREAD BLOCK`.
 - **RESP2 Protocol**: Full support for Simple Strings, Errors, Integers, Bulk Strings, and Arrays.
 - **Thread Safety**: Global mutex-protected store ensures data integrity across concurrent connections.
+- **Replication**: Basic support for replication roles.
 
 ## Getting Started
 
@@ -41,15 +43,25 @@ The server currently supports a wide range of Redis commands:
 Ensure you have Go 1.26+ installed, then start the server:
 
 ```sh
-go run ./cmd/redis-server
+go run ./cmd/redis-server --port 6380
 ```
 
-The server listens on `0.0.0.0:6379`. You can interact with it using `redis-cli`:
+The server listens on `0.0.0.0:6379` by default. You can interact with it using `redis-cli`:
 
 ```sh
-redis-cli SET foo bar
-redis-cli GET foo
+redis-cli --port 6380 SET foo bar
+redis-cli --port 6380 GET foo
 ```
+
+### Replication
+
+Start a server as a replica using the `--replicaof` flag:
+
+```sh
+go run ./cmd/redis-server --port 6381 --replicaof "localhost 6379"
+```
+
+The `INFO replication` command will reflect the `slave` role in this mode.
 
 ### Run tests
 

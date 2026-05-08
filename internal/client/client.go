@@ -58,6 +58,8 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 		return commands.GET(args)
 	case "INCR":
 		return commands.INCR(args)
+	case "INFO":
+		return commands.INFO(args)
 
 	// List commands.
 	case "RPUSH":
