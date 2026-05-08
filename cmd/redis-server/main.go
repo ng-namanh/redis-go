@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ng-namanh/redis-go/internal/commands"
@@ -16,10 +17,15 @@ func main() {
 	replicaof := flag.String("replicaof", "", "Create a replica of another Redis server. Expects 'master_host master_port'.")
 	flag.Parse()
 
+	commands.ServerPort = strconv.Itoa(*port)
+
 	if *replicaof != "" {
 		parts := strings.Fields(*replicaof)
 		if len(parts) == 2 {
 			commands.Role = "slave"
+			commands.MasterHost = parts[0]
+			commands.MasterPort = parts[1]
+			go commands.StartReplicaHandshake()
 		}
 	}
 

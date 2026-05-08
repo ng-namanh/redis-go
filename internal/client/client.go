@@ -84,6 +84,10 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 		return commands.XRANGE(args)
 	case "XREAD":
 		return commands.XREAD(args)
+	case "REPLCONF":
+		return commands.REPLCONF(args)
+	case "PSYNC":
+		return commands.PSYNC(args)
 
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)

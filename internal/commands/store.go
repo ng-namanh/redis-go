@@ -12,6 +12,9 @@ var streams = make(map[string]*Stream)
 var Role = "master"
 var MasterReplid string
 var MasterReplOffset int64 = 0
+var MasterHost string
+var MasterPort string
+var ServerPort string
 var keyVersions = make(map[string]uint64)
 
 func init() {
@@ -35,12 +38,12 @@ func Unlock() {
 	mutex.Unlock()
 }
 
-// Touch increments the version of a key. Caller must hold mutex.
+// increments the version of a key. Caller must hold mutex.
 func Touch(key string) {
 	keyVersions[key]++
 }
 
-// GetVersion returns the current version of a key. Caller must hold mutex.
+// returns the current version of a key. Caller must hold mutex.
 func GetVersion(key string) uint64 {
 	return keyVersions[key]
 }

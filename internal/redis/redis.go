@@ -11,10 +11,16 @@ import (
 type StreamId = commands.StreamId
 
 var (
-	ParseStreamID = commands.ParseStreamID
-	XADD          = commands.XADD
-	TYPE          = commands.TYPE
-	SetRole       = func(role string) { commands.Role = role }
+	ParseStreamID      = commands.ParseStreamID
+	XADD               = commands.XADD
+	TYPE               = commands.TYPE
+	SetRole            = func(role string) { commands.Role = role }
+	SetHandshakeConfig = func(host, port, serverPort string) {
+		commands.MasterHost = host
+		commands.MasterPort = port
+		commands.ServerPort = serverPort
+	}
+	TriggerHandshake = commands.StartReplicaHandshake
 )
 
 func DispatchCommand(v resp.RESP) ([]byte, error) {

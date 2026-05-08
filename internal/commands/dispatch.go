@@ -36,6 +36,10 @@ func HandleCommand(cmd string, args []string) ([]byte, error) {
 		return XRANGE(args)
 	case "XREAD":
 		return XREAD(args)
+	case "REPLCONF":
+		return REPLCONF(args)
+	case "PSYNC":
+		return PSYNC(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
@@ -73,6 +77,10 @@ func HandleCommandUnlocked(cmd string, args []string) ([]byte, error) {
 		return xaddUnlocked(args)
 	case "XRANGE":
 		return xrangeUnlocked(args)
+	case "REPLCONF":
+		return REPLCONF(args)
+	case "PSYNC":
+		return PSYNC(args)
 	default:
 		// Commands that are still blocking or not yet refactored will fallback to HandleCommand.
 		// Note: This may cause deadlocks if those commands attempt to Lock().
