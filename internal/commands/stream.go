@@ -89,6 +89,7 @@ func xaddUnlocked(args []string) ([]byte, error) {
 		id:     finalID,
 		fields: append([]string(nil), fields...),
 	})
+	Touch(streamKey)
 	return resp.WriteBulkString(finalID), nil
 }
 
@@ -109,7 +110,7 @@ func xrangeUnlocked(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("Invalid stream ID")
 	}
 	if !StreamIdGte(end, start) {
-		return resp.WriteArray(nil), nil
+		return resp.WriteArray([]resp.RESP{}), nil
 	}
 
 	if _, ok := lists[key]; ok {
@@ -123,7 +124,7 @@ func xrangeUnlocked(args []string) ([]byte, error) {
 
 	s := streams[key]
 	if s == nil {
-		return resp.WriteArray(nil), nil
+		return resp.WriteArray([]resp.RESP{}), nil
 	}
 
 	out := make([]resp.RESP, 0)
@@ -357,7 +358,7 @@ afterOptions:
 		return resp.WriteArray(out), nil
 	}
 	if blockMs < 0 {
-		return resp.WriteArray(nil), nil
+		return resp.WriteArray([]resp.RESP{}), nil
 	}
 
 	// Blocking mode: poll until data available or timeout.

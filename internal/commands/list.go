@@ -95,6 +95,7 @@ func rpushUnlocked(args []string) ([]byte, error) {
 	values := append([]string(nil), args[1:]...)
 
 	n := listsRPush(listName, values)
+	Touch(listName)
 	flushBLPOPAfterPush()
 	return resp.WriteInteger(int64(n)), nil
 }
@@ -114,6 +115,7 @@ func lpushUnlocked(args []string) ([]byte, error) {
 	vals := append([]string(nil), args[1:]...)
 
 	n := listsLPush(listName, vals)
+	Touch(listName)
 	flushBLPOPAfterPush()
 	return resp.WriteInteger(int64(n)), nil
 }
@@ -194,6 +196,7 @@ func lpopUnlocked(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid argument for 'LPOP'")
 	}
 	popped := getPoppedElements(key, count)
+	Touch(key)
 	out := make([]resp.RESP, 0, len(popped))
 	for _, s := range popped {
 		out = append(out, resp.RESP{Type: resp.BulkString, Str: s})

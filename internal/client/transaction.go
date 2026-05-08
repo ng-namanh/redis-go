@@ -30,6 +30,29 @@ func (c *Client) discard(_ []string) ([]byte, error) {
 	}
 	c.inMulti = false
 	c.queuedCommands = nil
+	c.unwatch(nil)
+	return resp.WriteSimpleString("OK"), nil
+}
+
+func (c *Client) watch(args []string) ([]byte, error) {
+	if c.inMulti {
+		return nil, fmt.Errorf("WATCH inside MULTI is not allowed")
+	}
+	if len(args) == 0 {
+		return nil, fmt.Errorf("wrong number of arguments for 'WATCH'")
+	}
+
+	commands.Lock()
+	defer commands.Unlock()
+
+	for _, key := range args {
+		c.watchedKeys[key] = commands.GetVersion(key)
+	}
+	return resp.WriteSimpleString("OK"), nil
+}
+
+func (c *Client) unwatch(_ []string) ([]byte, error) {
+	c.watchedKeys = make(map[string]uint64)
 	return resp.WriteSimpleString("OK"), nil
 }
 
@@ -43,12 +66,22 @@ func (c *Client) exec(_ []string) ([]byte, error) {
 	c.queuedCommands = nil
 
 	if len(cmds) == 0 {
-		return resp.WriteArray(nil), nil
+		return resp.WriteArray([]resp.RESP{}), nil
 	}
 
 	// Acquire the global lock for the entire duration of EXEC to ensure atomicity.
 	commands.Lock()
 	defer commands.Unlock()
+
+	// Check if any watched keys have been modified.
+	for key, version := range c.watchedKeys {
+		if commands.GetVersion(key) != version {
+			// Abort transaction
+			c.watchedKeys = make(map[string]uint64)
+			return resp.WriteArray(nil), nil
+		}
+	}
+	c.watchedKeys = make(map[string]uint64) // Clear watched keys after EXEC
 
 	results := make([]resp.RESP, 0, len(cmds))
 	for _, q := range cmds {

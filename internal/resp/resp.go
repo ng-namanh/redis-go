@@ -226,6 +226,9 @@ func encodeRESP(v RESP) []byte {
 
 // WriteArray encodes elems as *<n>\r\n followed by each element as a full RESP value.
 func WriteArray(elems []RESP) []byte {
+	if elems == nil {
+		return []byte("*-1" + CRLF)
+	}
 	var b bytes.Buffer
 	b.WriteByte('*')
 	b.WriteString(strconv.FormatInt(int64(len(elems)), 10))

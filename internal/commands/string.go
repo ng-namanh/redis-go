@@ -34,6 +34,7 @@ func setUnlocked(args []string) ([]byte, error) {
 	value := args[1]
 
 	cache[key] = value
+	Touch(key)
 
 	if len(args) > 2 && args[2] == "PX" {
 		duration, err := strconv.ParseInt(args[3], 10, 64)
@@ -93,6 +94,7 @@ func incrUnlocked(args []string) ([]byte, error) {
 	}
 	s++
 	cache[key] = s
+	Touch(key)
 	return resp.WriteInteger(int64(s)), nil
 }
 

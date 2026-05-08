@@ -10,10 +10,13 @@ import (
 type Client struct {
 	inMulti        bool
 	queuedCommands []QueuedCommand
+	watchedKeys    map[string]uint64 // key -> version when WATCHed
 }
 
 func NewClient() *Client {
-	return &Client{}
+	return &Client{
+		watchedKeys: make(map[string]uint64),
+	}
 }
 
 func (c *Client) DispatchCommand(v resp.RESP) ([]byte, error) {
@@ -40,6 +43,10 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 		return c.exec(args)
 	case "DISCARD":
 		return c.discard(args)
+	case "WATCH":
+		return c.watch(args)
+	case "UNWATCH":
+		return c.unwatch(args)
 
 	case "PING":
 		return commands.PING(), nil
