@@ -92,6 +92,8 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 	case "PSYNC":
 		return c.psync(args)
 
+	case "CONFIG":
+		return commands.CONFIG(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}

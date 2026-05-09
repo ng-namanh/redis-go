@@ -15,9 +15,13 @@ import (
 func main() {
 	port := flag.Int("port", 6379, "The port on which the server will listen for incoming connections.")
 	replicaof := flag.String("replicaof", "", "Create a replica of another Redis server. Expects 'master_host master_port'.")
+	dir := flag.String("dir", "", "The directory where RDB files are stored.")
+	dbfilename := flag.String("dbfilename", "", "The name of the RDB file.")
 	flag.Parse()
 
 	commands.ServerPort = strconv.Itoa(*port)
+	commands.Dir = *dir
+	commands.Dbfilename = *dbfilename
 
 	if *replicaof != "" {
 		parts := strings.Fields(*replicaof)

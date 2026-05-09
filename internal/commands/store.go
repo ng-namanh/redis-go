@@ -8,6 +8,8 @@ import (
 	"github.com/ng-namanh/redis-go/internal/resp"
 )
 
+const emptyRDBBase64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHMxwP6FY3RpbWXCbYi8Zf6IdXNlZC1tZW3CsMQQAP6IYW9mLWJhc2XAAf8Qq6I7c7QUvA=="
+
 var mutex sync.Mutex
 var cache = map[string]any{}
 var lists map[string]list = make(map[string]list)
@@ -18,6 +20,8 @@ var MasterReplOffset int64 = 0
 var MasterHost string
 var MasterPort string
 var ServerPort string
+var Dir string
+var Dbfilename string
 var keyVersions = make(map[string]uint64)
 
 var replicas []net.Conn

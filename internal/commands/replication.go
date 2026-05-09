@@ -35,8 +35,6 @@ func REPLCONF(args []string) ([]byte, error) {
 	return resp.WriteSimpleString("OK"), nil
 }
 
-const emptyRDBBase64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHMxwP6FY3RpbWXCbYi8Zf6IdXNlZC1tZW3CsMQQAP6IYW9mLWJhc2XAAf8Qq6I7c7QUvA=="
-
 func PSYNC(args []string) ([]byte, error) {
 	fullResync := resp.WriteSimpleString(fmt.Sprintf("FULLRESYNC %s %d", MasterReplid, MasterReplOffset))
 
@@ -142,8 +140,8 @@ func sendCommand(conn net.Conn, args []string) error {
 	for i, arg := range args {
 		elems[i] = resp.RESP{Type: resp.BulkString, Str: arg}
 	}
-	wire := resp.WriteArray(elems)
-	_, err := conn.Write(wire)
+	write := resp.WriteArray(elems)
+	_, err := conn.Write(write)
 	return err
 }
 

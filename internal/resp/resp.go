@@ -84,12 +84,10 @@ func ReadValue(r *bufio.Reader) (RESP, error) {
 			return RESP{}, fmt.Errorf("invalid bulk length: %w", err)
 		}
 
-		// if the bulk length is -1, it means the bulk string is null
 		if n == -1 {
 			return RESP{Type: BulkString, Null: true}, nil
 		}
 
-		// if the bulk length is less than -1, it means the bulk string is invalid
 		if n < -1 {
 			return RESP{}, fmt.Errorf("invalid bulk length %d", n)
 		}
@@ -125,7 +123,7 @@ func ReadValue(r *bufio.Reader) (RESP, error) {
 		}
 
 		elems := make([]RESP, 0, cnt)
-		for i := 0; i < cnt; i++ {
+		for range cnt {
 			v, err := ReadValue(r)
 			if err != nil {
 				return RESP{}, err
