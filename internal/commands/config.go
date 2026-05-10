@@ -26,6 +26,18 @@ func CONFIG(args []string) ([]byte, error) {
 		val = Dbfilename
 	case "port":
 		val = ServerPort
+	case "appendonly":
+		if AppendOnly {
+			val = "yes"
+		} else {
+			val = "no"
+		}
+	case "appenddirname":
+		val = AppendDirName
+	case "appendfilename":
+		val = AppendFileName
+	case "appendfsync":
+		val = AppendFsync
 	default:
 		return resp.WriteArray([]resp.RESP{}), nil
 	}

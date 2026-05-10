@@ -15,13 +15,30 @@ import (
 func main() {
 	port := flag.Int("port", 6379, "The port on which the server will listen for incoming connections.")
 	replicaof := flag.String("replicaof", "", "Create a replica of another Redis server. Expects 'master_host master_port'.")
-	dir := flag.String("dir", "", "The directory where RDB files are stored.")
-	dbfilename := flag.String("dbfilename", "", "The name of the RDB file.")
+	dir := flag.String("dir", ".", "The directory where RDB/AOF files are stored.")
+	dbfilename := flag.String("dbfilename", "dump.rdb", "The name of the RDB file.")
+	appendonly := flag.String("appendonly", "no", "Enable/disable append-only mode ('yes' or 'no').")
+	appenddirname := flag.String("appenddirname", "appendonlydir", "The name of the AOF directory.")
+	appendfilename := flag.String("appendfilename", "appendonly.aof", "The name of the AOF file.")
+	appendfsync := flag.String("appendfsync", "everysec", "Fsync policy ('always', 'everysec', 'no').")
+
 	flag.Parse()
 
 	commands.ServerPort = strconv.Itoa(*port)
 	commands.Dir = *dir
 	commands.Dbfilename = *dbfilename
+	commands.AppendOnly = strings.ToLower(*appendonly) == "yes"
+	commands.AppendDirName = *appenddirname
+	commands.AppendFileName = *appendfilename
+	commands.AppendFsync = *appendfsync
+
+	// Initialize AOF
+	if commands.AppendOnly {
+		if err := commands.InitializeAOF(); err != nil {
+			fmt.Printf("Failed to initialize AOF: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	if *replicaof != "" {
 		parts := strings.Fields(*replicaof)

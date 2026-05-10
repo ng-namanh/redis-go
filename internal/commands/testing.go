@@ -10,4 +10,8 @@ func ResetForTesting() {
 	blpopWaiters = nil
 	MasterReplOffset = 0
 	Role = "master"
+	if aofFile != nil {
+		aofFile.Close()
+		aofFile = nil
+	}
 }

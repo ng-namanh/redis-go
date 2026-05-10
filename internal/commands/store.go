@@ -22,6 +22,11 @@ var MasterPort string
 var ServerPort string
 var Dir string
 var Dbfilename string
+var AppendOnly bool
+var AppendDirName string
+var AppendFileName string
+var AppendFsync string
+var isReplaying bool
 var keyVersions = make(map[string]uint64)
 
 var replicas []net.Conn
@@ -65,11 +70,14 @@ func AddReplica(conn net.Conn) {
 }
 
 func Propagate(cmd string, args []string) {
+	if AppendOnly && !isReplaying {
+		AppendToAOF(cmd, args)
+	}
+
 	if Role != "master" {
 		return
 	}
 
-	// Only propagate if we have replicas
 	replicasMutex.Lock()
 	if len(replicas) == 0 {
 		replicasMutex.Unlock()
@@ -77,7 +85,6 @@ func Propagate(cmd string, args []string) {
 	}
 	defer replicasMutex.Unlock()
 
-	// Encode command as RESP array of bulk strings
 	elems := make([]resp.RESP, len(args)+1)
 	elems[0] = resp.RESP{Type: resp.BulkString, Str: cmd}
 	for i, arg := range args {
