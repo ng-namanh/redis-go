@@ -42,6 +42,8 @@ func HandleCommand(cmd string, args []string) ([]byte, error) {
 		return REPLCONF(args)
 	case "PSYNC":
 		return PSYNC(args)
+	case "PUBLISH":
+		return PUBLISH(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
@@ -85,6 +87,8 @@ func HandleCommandUnlocked(cmd string, args []string) ([]byte, error) {
 		return PSYNC(args)
 	case "CONFIG":
 		return CONFIG(args)
+	case "PUBLISH":
+		return PUBLISH(args)
 	default:
 		// Commands that are still blocking or not yet refactored will fallback to HandleCommand.
 		// Note: This may cause deadlocks if those commands attempt to Lock().

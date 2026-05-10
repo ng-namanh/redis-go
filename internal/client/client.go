@@ -94,6 +94,15 @@ func (c *Client) HandleCommand(cmd string, args []string) ([]byte, error) {
 
 	case "CONFIG":
 		return commands.CONFIG(args)
+
+	// Pub/Sub.
+	case "SUBSCRIBE":
+		return commands.SUBSCRIBE(c.Conn, args)
+	case "UNSUBSCRIBE":
+		return commands.UNSUBSCRIBE(c.Conn, args)
+	case "PUBLISH":
+		return commands.PUBLISH(args)
+
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
