@@ -1,78 +1,67 @@
 # Redis Go Implementation
 
-A lightweight Redis-compatible server implemented in Go, targeting RESP2 protocol compatibility.
+A lightweight, educational Redis-compatible server implemented from scratch in Go.
 
-## Current Implementation
+## 🚀 Core Features
 
-The project is organized into several internal packages to separate concerns:
+Buildi this Redis implementation was a step-by-step exploration of distributed systems, protocol design, and efficient data structures:
 
-- [**`cmd/redis-server/main.go`**](cmd/redis-server/main.go): Program entry point; sets up the TCP listener and accept loop.
-- [**`internal/server/handler.go`**](internal/server/handler.go): Manages the lifecycle of TCP connections.
-- [**`internal/client/`**](internal/client/): Manages per-connection state, including transaction queues (`MULTI`, `EXEC`, `DISCARD`).
-- [**`internal/commands/`**](internal/commands/): Contains the core logic for all supported Redis commands:
-    - `string.go`: String operations (`SET`, `GET`, `INCR`).
-    - `list.go` & `list_blocking.go`: List operations (`LPUSH`, `RPUSH`, `LPOP`, `BLPOP`, etc.).
-    - `stream.go` & `xread.go`: Stream operations (`XADD`, `XRANGE`, `XREAD`).
-    - `replication.go`: Replication status and info (`INFO`).
-    - `store.go`: Central in-memory data store with thread-safe access.
-- [**`internal/resp/`**](internal/resp/): Robust RESP2 parser and encoder.
-- [**`internal/redis/`**](internal/redis/): A compatibility shim and test suite for the server logic.
+1.  **The Foundation (RESP2 Protocol)**: The journey began with implementing the REdis Serialization Protocol. This involved building a robust, recursive parser capable of handling Simple Strings, Errors, Integers, Bulk Strings, and nested Arrays.
+2.  **Core Storage & Strings**: Implementing a thread-safe global map to store values and the basic `GET`, `SET`, and `INCR` commands.
+3.  **Concurrency & Atomic Transactions**: Moving beyond simple commands to support `MULTI`, `EXEC`, and `WATCH`. This required managing per-connection state and implementing version-based optimistic locking for keys.
+4.  **Advanced Data Structures**:
+    - **Lists**: Implementing doubly-linked lists with blocking operations (`BLPOP`) using Go channels for coordination.
+    - **Streams**: Building an append-only log structure with support for ID-based range queries (`XRANGE`) and blocking reads (`XREAD`).
+    - **Sorted Sets (Skip Lists)**: Implementing a probabilistic **Skip List** with `span` tracking, allowing for $O(\log N)$ rank calculations—a core optimization used by the original Redis.
+5.  **Persistence (AOF)**: Ensuring data survives restarts by implementing an Append-Only File with manifest management and a background fsync policy.
+6.  **Replication**: Establishing basic master-slave handshakes and command propagation to support horizontal read scaling.
+7.  **Custom CLI**: Completing the ecosystem by building a Go-based CLI client that supports interactive REPL mode, quoted arguments, and formatted output.
 
-## Supported Commands
+## 🏗️ Project Architecture
 
-The server currently supports a wide range of Redis commands:
+The codebase is organized into modular internal packages:
 
-- **General**: `PING`, `ECHO`, `TYPE`, `INFO`
-- **Strings**: `SET` (with `PX` expiry), `GET`, `INCR`
+- [**`cmd/`**](cmd/): Entry points for the `redis-server` and `redis-cli`.
+- [**`internal/resp/`**](internal/resp/): The heartbeat of the system—a dedicated RESP2 parser and encoder.
+- [**`internal/commands/`**](internal/commands/): Logic for Strings, Lists, Streams, Sorted Sets, and Pub/Sub.
+- [**`internal/store/`**](internal/commands/store.go): The thread-safe in-memory engine.
+- [**`internal/client/`**](internal/client/): Connection management and transaction state.
+
+## 🛠️ Supported Commands
+
+- **Strings**: `SET`, `GET`, `INCR`
 - **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `LLEN`, `LRANGE`, `BLPOP`
-- **Streams**: `XADD`, `XRANGE`, `XREAD` (with `BLOCK` and `COUNT` support)
+- **Sorted Sets**: `ZADD`, `ZRANK`, `ZRANGE`, `ZCARD`, `ZSCORE`, `ZREM`
+- **Streams**: `XADD`, `XRANGE`, `XREAD`
 - **Transactions**: `MULTI`, `EXEC`, `DISCARD`, `WATCH`, `UNWATCH`
+- **Pub/Sub**: `PUBLISH`, `SUBSCRIBE`, `UNSUBSCRIBE`
+- **System**: `PING`, `ECHO`, `TYPE`, `INFO`, `CONFIG`
 
-## Features
+## 🚦 Getting Started
 
-- **Stateful Sessions**: Each connection has its own client state, enabling atomic transactions.
-- **Blocking Operations**: Support for blocking commands like `BLPOP` and `XREAD BLOCK`.
-- **RESP2 Protocol**: Full support for Simple Strings, Errors, Integers, Bulk Strings, and Arrays.
-- **Thread Safety**: Global mutex-protected store ensures data integrity across concurrent connections.
-- **Replication**: Basic support for replication roles.
-
-## Getting Started
-
-### Run locally
-
-Ensure you have Go 1.26+ installed, then start the server:
+### 1. Build & Run the Server
 
 ```sh
-go run ./cmd/redis-server --port 6380
+go build -o redis-server ./cmd/redis-server/main.go
+./redis-server --port 6379
 ```
 
-The server listens on `0.0.0.0:6379` by default. You can interact with it using `redis-cli`:
+### 2. Connect with the CLI
 
 ```sh
-redis-cli --port 6380 SET foo bar
-redis-cli --port 6380 GET foo
+go build -o redis-cli ./cmd/redis-cli/main.go
+./redis-cli
 ```
 
-### Replication
-
-Start a server as a replica using the `--replicaof` flag:
-
-```sh
-go run ./cmd/redis-server --port 6381 --replicaof "localhost 6379"
-```
-
-The `INFO replication` command will reflect the `slave` role in this mode.
-
-### Run tests
-
-The project includes a comprehensive test suite covering protocol parsing, command logic, and transaction isolation.
+### 3. Run the Test Suite
 
 ```sh
 go test ./...
 ```
 
-## Technical Notes
+## 📝 Technical Highlights
 
-- **Buffered I/O**: The parser uses `bufio.Reader` to handle network packets efficiently and support pipelining.
-- **Recursive Parsing**: RESP Arrays are parsed recursively, allowing for complex nested structures.
-- **Atomic Transactions**: Commands queued within a `MULTI` block are executed sequentially when `EXEC` is called, with results returned as a single array.
+- **Skip List Spans**: Unlike standard skip lists, this implementation tracks `span` (the distance between nodes) to allow $O(\log N)$ rank-based access.
+- **Optimistic Locking**: `WATCH` uses a versioning system to detect concurrent modifications during a transaction.
+- **Blocking Coordination**: Commands like `BLPOP` use a combination of mutexes and signaling channels to wake up clients when data becomes available.
+- **AOF Manifests**: Supports incremental AOF files and replay on startup to recover state.
