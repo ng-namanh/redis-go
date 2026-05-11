@@ -44,6 +44,18 @@ func HandleCommand(cmd string, args []string) ([]byte, error) {
 		return PSYNC(args)
 	case "PUBLISH":
 		return PUBLISH(args)
+	case "ZADD":
+		return ZADD(args)
+	case "ZRANK":
+		return ZRANK(args)
+	case "ZRANGE":
+		return ZRANGE(args)
+	case "ZCARD":
+		return ZCARD(args)
+	case "ZSCORE":
+		return ZSCORE(args)
+	case "ZREM":
+		return ZREM(args)
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cmd)
 	}
@@ -89,6 +101,18 @@ func HandleCommandUnlocked(cmd string, args []string) ([]byte, error) {
 		return CONFIG(args)
 	case "PUBLISH":
 		return PUBLISH(args)
+	case "ZADD":
+		return zaddUnlocked(args)
+	case "ZRANK":
+		return zrankUnlocked(args)
+	case "ZRANGE":
+		return zrangeUnlocked(args)
+	case "ZCARD":
+		return zcardUnlocked(args)
+	case "ZSCORE":
+		return zscoreUnlocked(args)
+	case "ZREM":
+		return zremUnlocked(args)
 	default:
 		// Commands that are still blocking or not yet refactored will fallback to HandleCommand.
 		// Note: This may cause deadlocks if those commands attempt to Lock().

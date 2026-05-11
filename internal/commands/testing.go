@@ -6,6 +6,7 @@ func ResetForTesting() {
 	cache = make(map[string]any)
 	lists = make(map[string]list)
 	streams = make(map[string]*Stream)
+	sortedSets = make(map[string]*SortedSet)
 	keyVersions = make(map[string]uint64)
 	blpopWaiters = nil
 	MasterReplOffset = 0

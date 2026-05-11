@@ -14,6 +14,7 @@ var mutex sync.Mutex
 var cache = map[string]any{}
 var lists map[string]list = make(map[string]list)
 var streams = make(map[string]*Stream)
+var sortedSets = make(map[string]*SortedSet)
 var Role = "master"
 var MasterReplid string
 var MasterReplOffset int64 = 0

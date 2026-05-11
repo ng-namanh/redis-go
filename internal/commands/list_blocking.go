@@ -10,7 +10,7 @@ import (
 
 type blpopWaiter struct {
 	keys []string
-	ch   chan []byte // capacity 1: RESP array [key][value]
+	ch   chan []byte
 }
 
 var blpopWaiters []*blpopWaiter
