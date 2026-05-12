@@ -1,67 +1,53 @@
 # Redis Go Implementation
 
-A lightweight, educational Redis-compatible server implemented from scratch in Go.
+A multi-threaded, simple Redis-compatible server built from the ground up in Go.
 
-## 🚀 Core Features
+## Motivation
+This project started with a simple question: *How does Redis manage millions of operations with such elegant simplicity?* My research into the Redis core repository revealed a fascinating architecture: a single-threaded system powered by an Event Loop. This inspired me to rebuild those internals in Go, transitioning from a single-threaded model to a modern, concurrent architecture leveraging Goroutines and Channels.
 
-Buildi this Redis implementation was a step-by-step exploration of distributed systems, protocol design, and efficient data structures:
+## Features
+**RESP2 Protocol** • **Thread-safe Storage** • **Transactions (MULTI/EXEC/WATCH)** • **Sorted Sets** • **Streams** • **AOF Persistence** • **Replication** • **Custom CLI**
 
-1.  **The Foundation (RESP2 Protocol)**: The journey began with implementing the REdis Serialization Protocol. This involved building a robust, recursive parser capable of handling Simple Strings, Errors, Integers, Bulk Strings, and nested Arrays.
-2.  **Core Storage & Strings**: Implementing a thread-safe global map to store values and the basic `GET`, `SET`, and `INCR` commands.
-3.  **Concurrency & Atomic Transactions**: Moving beyond simple commands to support `MULTI`, `EXEC`, and `WATCH`. This required managing per-connection state and implementing version-based optimistic locking for keys.
-4.  **Advanced Data Structures**:
-    - **Lists**: Implementing doubly-linked lists with blocking operations (`BLPOP`) using Go channels for coordination.
-    - **Streams**: Building an append-only log structure with support for ID-based range queries (`XRANGE`) and blocking reads (`XREAD`).
-    - **Sorted Sets (Skip Lists)**: Implementing a probabilistic **Skip List** with `span` tracking, allowing for $O(\log N)$ rank calculations—a core optimization used by the original Redis.
-5.  **Persistence (AOF)**: Ensuring data survives restarts by implementing an Append-Only File with manifest management and a background fsync policy.
-6.  **Replication**: Establishing basic master-slave handshakes and command propagation to support horizontal read scaling.
-7.  **Custom CLI**: Completing the ecosystem by building a Go-based CLI client that supports interactive REPL mode, quoted arguments, and formatted output.
+## What this project covers so far:
+- **Redis Serialization Protocol**: Implemented the full **RESP2** serialization protocol with a recursive, low-allocation parser.
+- **Concurrency**: Leveraged Go's concurrency primitives (channels, mutexes, and `sync.Cond`) to handle blocking operations like `BLPOP` and `XREAD`.
+- **Atomic Operations**: Designed an **Optimistic Locking** mechanism using version tracking to support `WATCH` transactions.
+- **Redis AOF**: Developed an **Append-Only File (AOF)** engine with manifest management for reliable state recovery.
+- **Messaging Architecture**: Built a **Pub/Sub** engine using thread-safe subscriber mapping and asynchronous message broadcasting.
 
-## 🏗️ Project Architecture
+## Knowledge Gained
+Building this project was a deep dive into Redis internals, helping me to understand multi-threading models and concurrency control mechanisms.
+### Redis & Database Internals
+- **Serialization**: Deep understanding of the **RESP** protocol and efficient data serialization over TCP.
+- **In-memory Data Structures**: Implementing the logic behind **Sorted Sets**, **Streams**, and **Lists**.
+- **Transaction Mechanics**: Understanding atomicity, `MULTI/EXEC` flow, and **Optimistic Locking** with `WATCH`.
+- **Persistence and Recovery**: How the **Append-Only File (AOF)** ensures data durability and recovery.
+- **Distributed Basics**: Implementing **Master-Slave replication** handshakes and command propagation.
 
-The codebase is organized into modular internal packages:
+### Advanced Go Development
+- **Concurrency**: Advanced use of `sync.Mutex`, `sync.RWMutex`, and `sync.Cond` for thread-safe data access.
+- **Asynchronous Coordination**: Using **Channels** to manage blocking operations (`BLPOP`, `XREAD`) and Pub/Sub broadcasting.
+- **Networking**: Handling raw TCP connections and stream parsing with the `net` and `io` packages.
 
-- [**`cmd/`**](cmd/): Entry points for the `redis-server` and `redis-cli`.
-- [**`internal/resp/`**](internal/resp/): The heartbeat of the system—a dedicated RESP2 parser and encoder.
-- [**`internal/commands/`**](internal/commands/): Logic for Strings, Lists, Streams, Sorted Sets, and Pub/Sub.
-- [**`internal/store/`**](internal/commands/store.go): The thread-safe in-memory engine.
-- [**`internal/client/`**](internal/client/): Connection management and transaction state.
-
-## 🛠️ Supported Commands
-
+## Supported Commands
 - **Strings**: `SET`, `GET`, `INCR`
-- **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `LLEN`, `LRANGE`, `BLPOP`
+- **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `LRANGE`, `BLPOP`
 - **Sorted Sets**: `ZADD`, `ZRANK`, `ZRANGE`, `ZCARD`, `ZSCORE`, `ZREM`
 - **Streams**: `XADD`, `XRANGE`, `XREAD`
 - **Transactions**: `MULTI`, `EXEC`, `DISCARD`, `WATCH`, `UNWATCH`
 - **Pub/Sub**: `PUBLISH`, `SUBSCRIBE`, `UNSUBSCRIBE`
 - **System**: `PING`, `ECHO`, `TYPE`, `INFO`, `CONFIG`
 
-## 🚦 Getting Started
+## Getting Started
 
 ### 1. Build & Run the Server
-
 ```sh
 go build -o redis-server ./cmd/redis-server/main.go
 ./redis-server --port 6379
 ```
 
 ### 2. Connect with the CLI
-
 ```sh
 go build -o redis-cli ./cmd/redis-cli/main.go
 ./redis-cli
 ```
-
-### 3. Run the Test Suite
-
-```sh
-go test ./...
-```
-
-## 📝 Technical Highlights
-
-- **Skip List Spans**: Unlike standard skip lists, this implementation tracks `span` (the distance between nodes) to allow $O(\log N)$ rank-based access.
-- **Optimistic Locking**: `WATCH` uses a versioning system to detect concurrent modifications during a transaction.
-- **Blocking Coordination**: Commands like `BLPOP` use a combination of mutexes and signaling channels to wake up clients when data becomes available.
-- **AOF Manifests**: Supports incremental AOF files and replay on startup to recover state.
