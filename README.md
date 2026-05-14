@@ -19,24 +19,6 @@ This project started with a simple question: _How does Redis manage millions of 
 - **Redis AOF**: Developed an **Append-Only File (AOF)** engine with manifest management for reliable state recovery.
 - **Messaging Architecture**: Built a **Pub/Sub** engine using thread-safe subscriber mapping and asynchronous message broadcasting.
 
-## Knowledge Gained
-
-Building this project was a deep dive into Redis internals, helping me to understand multi-threading models and concurrency control mechanisms.
-
-### Redis & Database Internals
-
-- **Serialization**: Deep understanding of the **RESP** protocol and efficient data serialization over TCP.
-- **In-memory Data Structures**: Implementing the logic behind **Sorted Sets**, **Streams**, and **Lists**.
-- **Transaction Mechanics**: Understanding atomicity, `MULTI/EXEC` flow, and **Optimistic Locking** with `WATCH`.
-- **Persistence and Recovery**: How the **Append-Only File (AOF)** ensures data durability and recovery.
-- **Distributed Basics**: Implementing **Master-Slave replication** handshakes and command propagation.
-
-### Advanced Go Development
-
-- **Concurrency**: Advanced use of `sync.Mutex`, `sync.RWMutex`, and `sync.Cond` for thread-safe data access.
-- **Asynchronous Coordination**: Using **Channels** to manage blocking operations (`BLPOP`, `XREAD`) and Pub/Sub broadcasting.
-- **Networking**: Handling raw TCP connections and stream parsing with the `net` and `io` packages.
-
 ## Supported Commands
 
 | Category     | Commands                                             |
